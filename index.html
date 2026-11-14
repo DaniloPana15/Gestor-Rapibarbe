@@ -13,7 +13,7 @@
   <div class="ambient-glow glow-1"></div>
   <div class="ambient-glow glow-2"></div>
 
-  <!-- PANTALLA DE BLOQUEO / PRIVACIDAD -->
+  <!-- PANTALLA DE BLOQUEO -->
   <div id="lock-screen" class="lock-overlay">
     <div class="lock-card glass-panel">
       <div class="brand-badge">
@@ -34,7 +34,7 @@
   <!-- APLICACIÓN PRINCIPAL -->
   <div id="app-shell" class="app-container" style="display:none;">
     
-    <!-- BARRA SUPERIOR TIPO SAAS MODERNO -->
+    <!-- BARRA SUPERIOR -->
     <header class="topbar glass-panel">
       <div class="topbar-left">
         <div class="logo-mark">✂️</div>
@@ -49,9 +49,9 @@
       <nav class="nav-pills" role="tablist">
         <button class="nav-pill active" data-tab="dashboard" onclick="switchTab('dashboard')">Resumen & Rutas</button>
         <button class="nav-pill" data-tab="movimientos" onclick="switchTab('movimientos')">+ Venta / Cobro</button>
-        <button class="nav-pill" data-tab="clientes" onclick="switchTab('clientes')">Clientes (136)</button>
-        <button class="nav-pill" data-tab="inventario" onclick="switchTab('inventario')">Stock (179)</button>
-        <button class="nav-pill" data-tab="nube" onclick="switchTab('nube')">☁️ Nube & PIN</button>
+        <button class="nav-pill" data-tab="clientes" onclick="switchTab('clientes')">Clientes</button>
+        <button class="nav-pill" data-tab="inventario" onclick="switchTab('inventario')">Stock</button>
+        <button class="nav-pill" data-tab="nube" onclick="switchTab('nube')">☁️ Nube & IA</button>
       </nav>
 
       <div class="topbar-right">
@@ -102,7 +102,6 @@
     <!-- TAB 1: DASHBOARD & HOJA DE RUTA -->
     <main id="tab-dashboard" class="tab-content active">
       <div class="dashboard-split">
-        <!-- Columna Izquierda: Hoja de Ruta y Deudores -->
         <div class="glass-panel panel-box">
           <div class="panel-head">
             <div>
@@ -137,7 +136,6 @@
           </div>
         </div>
 
-        <!-- Columna Derecha: Gráfico Visual + Últimos Movimientos -->
         <div class="side-stack">
           <div class="glass-panel panel-box">
             <div class="panel-head">
@@ -167,8 +165,21 @@
     <main id="tab-movimientos" class="tab-content">
       <div class="two-col-form">
         <div class="glass-panel panel-box">
+          
+          <!-- BLOQUE DE CARGA RÁPIDA POR VOZ / IA -->
+          <div class="voice-box">
+            <div class="voice-head">
+              <span>⚡ Carga Rápida por Voz o Texto</span>
+              <button type="button" class="btn-mic" id="btn-mic" onclick="startDictation()">🎙️ Dictar</button>
+            </div>
+            <textarea id="voice-input" rows="2" placeholder="Ej: Venta fiada a Richar Ronal: 2 after shave y 1 cool care, abonó 10000 en efectivo"></textarea>
+            <button type="button" class="btn-primary btn-full" style="margin-top:8px;" onclick="parseSmartCommand()">✨ Interpretar y Completar Formulario</button>
+          </div>
+
+          <hr class="divider" style="margin:18px 0;" />
+
           <h2>Registrar Movimiento</h2>
-          <p class="muted">Cada carga actualiza automáticamente la deuda del cliente y se guarda.</p>
+          <p class="muted">Si agregás productos del stock, se descuentan automáticamente al guardar.</p>
           
           <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
             <div class="form-row">
@@ -178,10 +189,10 @@
               </div>
               <div class="form-group">
                 <label>Tipo de Operación</label>
-                <select id="mov-tipo" required>
-                  <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
+                <select id="mov-tipo" onchange="toggleProductPicker()" required>
                   <option value="VENTA FIADA">📝 VENTA FIADA (Suma deuda)</option>
                   <option value="VENTA CONTADO">✅ VENTA CONTADO (No altera deuda)</option>
+                  <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
                 </select>
               </div>
             </div>
@@ -192,9 +203,23 @@
               <datalist id="clientes-datalist"></datalist>
             </div>
 
+            <!-- SELECTOR DE PRODUCTOS CON DESCUENTO DE STOCK -->
+            <div id="product-picker-box" class="picker-box">
+              <label style="font-size:12px; font-weight:600; color:#c4b5fd; display:block; margin-bottom:6px;">
+                📦 Agregar Productos del Stock (calcula monto y descuenta inventario)
+              </label>
+              <div class="picker-row">
+                <input type="text" id="prod-pick-search" list="productos-datalist" placeholder="Buscar producto..." />
+                <datalist id="productos-datalist"></datalist>
+                <input type="number" id="prod-pick-qty" value="1" min="1" style="width:72px; text-align:center;" />
+                <button type="button" class="btn-ghost" onclick="addCartItem()">+ Agregar</button>
+              </div>
+              <div id="cart-items-list" class="cart-list"></div>
+            </div>
+
             <div class="form-row">
               <div class="form-group">
-                <label>Monto ($ ARS)</label>
+                <label>Monto Total ($ ARS)</label>
                 <input type="number" id="mov-monto" min="1" step="any" placeholder="Ej: 45000" required />
               </div>
               <div class="form-group">
@@ -208,8 +233,13 @@
             </div>
 
             <div class="form-group">
+              <label>Entrega / Abono parcial en el momento ($ - Opcional)</label>
+              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="Si llevó fiado pero dejó plata, ponela acá" />
+            </div>
+
+            <div class="form-group">
               <label>Detalle de Productos / Pedido</label>
-              <input type="text" id="mov-detalle" placeholder="Ej: 2 After Shave, 1 Cool Care, 1 Caja Filos Dorco..." />
+              <input type="text" id="mov-detalle" placeholder="Se completa solo al agregar productos o escribí manual" />
             </div>
 
             <div class="form-group">
@@ -217,7 +247,7 @@
               <input type="text" id="mov-obs" placeholder="Ej: Pasa el viernes por el resto" />
             </div>
 
-            <button type="submit" class="btn-primary btn-full">Guardar Movimiento</button>
+            <button type="submit" class="btn-primary btn-full">Guardar Movimiento y Actualizar Stock</button>
           </form>
         </div>
 
@@ -225,7 +255,7 @@
           <div class="panel-head">
             <div>
               <h2>Historial Completo</h2>
-              <p class="muted">Podés eliminar un registro si te equivocaste al cargarlo.</p>
+              <p class="muted">Al eliminar una venta con productos, el stock se devuelve solo.</p>
             </div>
           </div>
           <div class="table-wrap">
@@ -318,30 +348,25 @@
       </div>
     </main>
 
-    <!-- TAB 5: NUBE GRATUITA & SEGURIDAD -->
+    <!-- TAB 5: NUBE GRATUITA & IA -->
     <main id="tab-nube" class="tab-content">
       <div class="two-col-form">
         <div class="glass-panel panel-box">
-          <h2>☁️ Sincronización en la Nube Gratis</h2>
-          <p class="muted">Como GitHub Pages es una web estática, conectala a una base de datos gratuita (JSONBin.io) para que todo lo que cargues en el celular aparezca al instante en la compu.</p>
+          <h2>☁️ Sincronización en la Nube & IA</h2>
+          <p class="muted">Conectá JSONBin para sincronizar entre vos y Freddy, y opcionalmente una Gemini API Key gratis para interpretar audios/textos complejos.</p>
           
-          <div class="steps-card">
-            <h4>¿Cómo activarlo en 2 minutos? (100% Gratis)</h4>
-            <ol>
-              <li>Entrá a <a href="https://jsonbin.io" target="_blank">jsonbin.io</a> y creá una cuenta gratis con tu Gmail.</li>
-              <li>En el menú izquierdo entrá a <strong>API Keys</strong> y copiá tu <code>X-Master-Key</code>.</li>
-              <li>Pegala acá abajo y tocá <strong>"Crear Nube Automática"</strong>. ¡Listo!</li>
-            </ol>
-          </div>
-
           <form onsubmit="saveCloudConfig(event)" class="styled-form">
             <div class="form-group">
               <label>X-Master-Key (de JSONBin.io)</label>
               <input type="password" id="cloud-key" placeholder="$2a$10$..." />
             </div>
             <div class="form-group">
-              <label>Bin ID (se completa solo al crear la nube, o pegalo si ya lo tenés)</label>
+              <label>Bin ID (se completa solo al crear la nube)</label>
               <input type="text" id="cloud-bin" placeholder="Ej: 6736a9b1ad19ca34f8c..." />
+            </div>
+            <div class="form-group">
+              <label>Gemini API Key (Opcional - Gratis en aistudio.google.com)</label>
+              <input type="password" id="gemini-key" placeholder="AIzaSy..." />
             </div>
             <div class="form-row">
               <button type="button" class="btn-primary" onclick="createCloudBin()">✨ Crear Nube Automática</button>
@@ -365,7 +390,6 @@
           <hr class="divider" />
 
           <h3>Copias de Seguridad (Archivo)</h3>
-          <p class="muted">Exportá toda tu base a un archivo JSON o restaurá uno anterior.</p>
           <div class="form-row" style="margin-top:12px;">
             <button type="button" class="btn-ghost" onclick="exportBackup()">⬇ Descargar Respaldo (.json)</button>
             <label class="btn-ghost file-btn">
@@ -381,7 +405,7 @@
     </main>
   </div>
 
-  <!-- MODAL NUEVO / EDITAR CLIENTE -->
+  <!-- MODALES (CLIENTE Y PRODUCTO) -->
   <div id="client-modal" class="modal-overlay" style="display:none;">
     <div class="modal-card glass-panel">
       <div class="panel-head">
@@ -403,7 +427,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>Zona / Barrio</label>
-            <input type="text" id="cli-zona" placeholder="Ej: CELINA, LINIERS, FLORES" />
+            <input type="text" id="cli-zona" />
           </div>
           <div class="form-group">
             <label>Día de Ruta</label>
@@ -419,7 +443,7 @@
         <div class="form-row">
           <div class="form-group">
             <label>WhatsApp (sin 0 ni 15)</label>
-            <input type="text" id="cli-tel" placeholder="Ej: 1161298430" />
+            <input type="text" id="cli-tel" />
           </div>
           <div class="form-group">
             <label>Categoría</label>
@@ -450,7 +474,6 @@
     </div>
   </div>
 
-  <!-- MODAL NUEVO PRODUCTO -->
   <div id="product-modal" class="modal-overlay" style="display:none;">
     <div class="modal-card glass-panel">
       <div class="panel-head">
@@ -460,7 +483,7 @@
       <form onsubmit="saveProduct(event)" class="styled-form">
         <div class="form-group">
           <label>Nombre del Producto *</label>
-          <input type="text" id="prod-nombre" placeholder="Ej: POMADA ORIGINAL BLACK 100ML" required />
+          <input type="text" id="prod-nombre" required />
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -478,7 +501,6 @@
   </div>
 
   <div id="toast" class="toast"></div>
-
   <script src="script.js"></script>
 </body>
 </html>
