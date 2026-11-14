@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Rapibarbe — Sistema de Gestión & Cobranzas</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon.png" />
+  <link rel="apple-touch-icon" href="logo-rapibarbe.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,7 +21,7 @@
   <div id="lock-screen" class="lock-overlay">
     <div class="lock-card glass-card">
       <div class="brand-badge">
-        <span class="brand-icon">✂️</span>
+        <img src="logo-rapibarbe.png" alt="Logo Rapibarbe" class="brand-logo-img" />
         <span>RAPIBARBE PRO</span>
       </div>
       <h2>Acceso Privado</h2>
@@ -38,7 +41,9 @@
     <!-- CABECERA TIPO APP FINTECH -->
     <header class="topbar">
       <div class="topbar-user">
-        <div class="avatar-ring">✂️</div>
+        <div class="avatar-ring">
+          <img src="logo-rapibarbe.png" alt="Logo Rapibarbe" class="topbar-logo-img" />
+        </div>
         <div>
           <div class="greeting-row">
             <span class="greeting-text">Hola, <strong>Rapibarbe</strong></span>
@@ -69,7 +74,7 @@
       </div>
     </header>
 
-    <!-- HERO BALANCE + BOTONES DE ACCIÓN RÁPIDA (INSPIRADO EN REFERENCIA) -->
+    <!-- HERO BALANCE + BOTONES DE ACCIÓN RÁPIDA -->
     <section class="hero-balance-section">
       <div class="balance-main">
         <span class="balance-label">Total en la Calle (Por Cobrar)</span>
@@ -436,7 +441,7 @@
     </main>
   </div>
 
-  <!-- BARRA FLOTANTE INFERIOR PARA MÓVILES (ESTILO APP FINTECH) -->
+  <!-- BARRA FLOTANTE INFERIOR PARA MÓVILES -->
   <nav class="mobile-bottom-dock" id="mobile-dock" style="display:none;">
     <div class="dock-pill">
       <button class="dock-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="Inicio">
