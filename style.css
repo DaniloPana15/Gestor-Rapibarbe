@@ -1,3 +1,751 @@
+:raíz {
+  --bg-deep: #090812;
+  --bg-surface: rgba(20, 18, 36, 0.72);
+  --bg-surface-solid: #141224;
+  --bg-elevated: rgba(34, 30, 62, 0.65);
+  --border-subtle: rgba(139, 124, 246, 0.16);
+  --border-glow: rgba(139, 92, 246, 0.45);
+  --primario: #7c5cff;
+  --primary-hover: #9175ff;
+  --primary-soft: rgba(124, 92, 255, 0.16);
+  --text-main: #f4f3ff;
+  --texto silenciado: #9894b8;
+  --verde: #10b981;
+  --green-soft: rgba(16, 185, 129, 0.15);
+  --ámbar: #f59e0b;
+  --amber-soft: rgba(245, 158, 11, 0.15);
+  --rojo: #ef4444;
+  --red-soft: rgba(239, 68, 68, 0.15);
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+}
+
+* {
+  box-size: border-box;
+  margen: 0;
+  relleno: 0;
+}
+
+cuerpo {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  color de fondo: var(--bg-deep);
+  color: var(--text-main);
+  altura mínima: 100vh;
+  desbordamiento-x: oculto;
+  interlineado: 1,5;
+}
+
+/* Efectos de iluminación ambiental tipo Quantix */
+.ambient-glow {
+  posición: fija;
+  radio de borde: 50%;
+  filtro: desenfoque(130px);
+  eventos de puntero: ninguno;
+  índice z: 0;
+}
+.brillo-1 {
+  ancho: 520px;
+  altura: 520px;
+  superior: -180px;
+  izquierda: 50%;
+  transformar: trasladarX(-50%);
+  fondo: radial-gradient(circle, rgba(124, 92, 255, 0.35), rgba(76, 29, 149, 0.05));
+}
+.brillo-2 {
+  ancho: 420px;
+  altura: 420px;
+  parte inferior: -150px;
+  derecha: -100px;
+  fondo: radial-gradient(circle, rgba(99, 102, 241, 0.2), transparent);
+}
+
+.panel-de-vidrio {
+  fondo: var(--bg-surface);
+  filtro de fondo: desenfoque (18px);
+  -webkit-backdrop-filter: blur(18px);
+  borde: 1px solid var(--border-sutil);
+  radio-borde: var(--radius-lg);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+/* Pantalla de Bloqueo */
+.lock-overlay {
+  posición: fija;
+  recuadro: 0;
+  índice z: 1000;
+  pantalla: flexible;
+  alinear-elementos: centro;
+  justificar-contenido: centro;
+  relleno: 20px;
+  fondo: gradiente radial(círculo en la parte superior, rgba(124, 92, 255, 0.18), var(--bg-deep) 70%);
+}
+
+.tarjeta-de-bloqueo {
+  ancho: 100%;
+  ancho máximo: 400px;
+  relleno: 36px 28px;
+  alineación de texto: centro;
+}
+
+.brand-badge {
+  display: inline-flex;
+  alinear-elementos: centro;
+  espacio: 8px;
+  relleno: 6px 14px;
+  radio de borde: 999px;
+  fondo: var(--primario-suave);
+  borde: 1px solid var(--border-glow);
+  color: #c4b5fd;
+  tamaño de fuente: 12px;
+  grosor de fuente: 700;
+  espaciado entre letras: 0,08em;
+  margen inferior: 18px;
+}
+
+.lock-card h2 {
+  tamaño de fuente: 24px;
+  grosor de fuente: 800;
+  margen inferior: 8px;
+}
+
+.tarjeta-de-bloqueo p {
+  color: var(--text-muted);
+  tamaño de fuente: 14px;
+  margen inferior: 22px;
+}
+
+.lock-card input {
+  ancho: 100%;
+  alineación de texto: centro;
+  tamaño de fuente: 20px;
+  espaciado entre letras: 6px;
+  margen inferior: 14px;
+}
+
+.texto-error {
+  color: var(--red);
+  tamaño de fuente: 13px;
+  margen superior: 10px;
+}
+
+.texto-de-pista {
+  mostrar: bloque;
+  margen superior: 18px;
+  tamaño de fuente: 12px;
+  color: var(--text-muted);
+}
+
+/* Contenedor Principal */
+.app-container {
+  posición: relativa;
+  índice z: 1;
+  ancho máximo: 1340px;
+  margen: 0 automático;
+  relleno: 18px 20px 60px;
+}
+
+/* Barra superior */
+.barra superior {
+  pantalla: flexible;
+  flex-wrap: envoltura;
+  alinear-elementos: centro;
+  justificar-contenido: espacio-entre;
+  espacio: 16px;
+  relleno: 14px 20px;
+  margen inferior: 22px;
+}
+
+.barra-superior-izquierda {
+  pantalla: flexible;
+  alinear-elementos: centro;
+  espacio: 12px;
+}
+
+.logo-marca {
+  ancho: 42px;
+  altura: 42px;
+  radio de borde: 12px;
+  fondo: gradiente-lineal(135deg, var(--primary), #4f46e5);
+  pantalla: flexible;
+  alinear-elementos: centro;
+  justificar-contenido: centro;
+  tamaño de fuente: 20px;
+  box-shadow: 0 0 20px rgba(124, 92, 255, 0.4);
+}
+
+.brand-title {
+  tamaño de fuente: 18px;
+  grosor de fuente: 800;
+  pantalla: flexible;
+  alinear-elementos: centro;
+  espacio: 8px;
+}
+
+.etiqueta-píldora {
+  tamaño de fuente: 11px;
+  grosor de fuente: 600;
+  relleno: 2px 8px;
+  radio de borde: 999px;
+  fondo: var(--primario-suave);
+  color: #c4b5fd;
+  borde: 1px solid var(--border-sutil);
+}
+
+.sync-indicator {
+  tamaño de fuente: 12px;
+  color: var(--text-muted);
+  pantalla: flexible;
+  alinear-elementos: centro;
+  espacio: 6px;
+}
+
+.punto {
+  ancho: 8px;
+  altura: 8px;
+  radio de borde: 50%;
+  mostrar: bloque en línea;
+}
+.dot-local { background: var(--amber); }
+.dot-cloud { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+/* Navegación tipo píldora */
+.nav-pills {
+  pantalla: flexible;
+  flex-wrap: envoltura;
+  espacio: 6px;
+  fondo: rgba(10, 9, 22, 0.65);
+  relleno: 5px;
+  radio de borde: 999px;
+  borde: 1px solid var(--border-sutil);
+}
+
+.nav-pill {
+  fondo: transparente;
+  borde: ninguno;
+  color: var(--text-muted);
+  relleno: 8px 16px;
+  radio de borde: 999px;
+  familia de fuentes: heredar;
+  tamaño de fuente: 13px;
+  grosor de fuente: 600;
+  cursor: puntero;
+  transición: todos 0,2 s de facilidad;
+}
+
+.nav-pill:hover {
+  color: var(--text-main);
+}
+
+.nav-pill.active {
+  fondo: gradiente lineal(135deg, var(--primary), #6366f1);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124, 92, 255, 0.4);
+}
+
+.barra-superior-derecha {
+  pantalla: flexible;
+  espacio: 8px;
+}
+
+/* Cuadrícula de KPI */
+.kpi-grid {
+  mostrar: cuadrícula;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  espacio: 16px;
+  margen inferior: 22px;
+}
+
+.tarjeta-kpi {
+  relleno: 20px;
+  transición: transformación 0,2 s de facilidad, color de borde 0,2 s de facilidad;
+}
+
+.kpi-card:hover {
+  transformar: translateY(-2px);
+  color-borde: var(--border-glow);
+}
+
+.highlight-purple {
+  fondo: gradiente-lineal(145 grados, rgba(124, 92, 255, 0.22), rgba(20, 18, 36, 0.85));
+  color-borde: var(--border-glow);
+}
+
+.kpi-header {
+  pantalla: flexible;
+  justificar-contenido: espacio-entre;
+  alinear-elementos: centro;
+  tamaño de fuente: 13px;
+  color: var(--text-muted);
+  margen inferior: 10px;
+}
+
+.kpi-badge {
+  tamaño de fuente: 11px;
+  grosor de fuente: 700;
+  relleno: 3px 9px;
+  radio de borde: 999px;
+}
+
+.badge-purple { background: var(--primary-soft); color: #c4b5fd; }
+.badge-green { background: var(--green-soft); color: #6ee7b7; }
+.badge-blue { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+.badge-amber { background: var(--amber-soft); color: #fcd34d; }
+
+.valor-kpi {
+  tamaño de fuente: 28px;
+  grosor de fuente: 800;
+  espaciado entre letras: -0,02em;
+  margen inferior: 4px;
+}
+
+.kpi-sub {
+  tamaño de fuente: 12px;
+  color: var(--text-muted);
+}
+
+/* Pestañas y paneles */
+.tab-content {
+  mostrar: ninguno;
+}
+.tab-content.active {
+  mostrar: bloque;
+  animación: fadeIn 0.25s ease;
+}
+
+@keyframes fadeIn {
+  desde { opacidad: 0; transformar: traducirY(6px); }
+  a { opacidad: 1; transformar: traducirY(0); }
+}
+
+.dashboard-split {
+  mostrar: cuadrícula;
+  columnas-de-plantilla-de-cuadrícula: 1,65fr 1fr;
+  espacio: 20px;
+}
+
+.formulario-de-dos-columnas {
+  mostrar: cuadrícula;
+  columnas-de-plantilla-de-cuadrícula: 1fr 1.2fr;
+  espacio: 20px;
+}
+
+@media (max-width: 960px) {
+  .dashboard-split, .two-col-form {
+    columnas-de-plantilla-de-cuadrícula: 1fr;
+  }
+}
+
+.side-stack {
+  pantalla: flexible;
+  flex-direction: columna;
+  espacio: 20px;
+}
+
+.panel-box {
+  relleno: 22px;
+}
+
+.panel-head {
+  pantalla: flexible;
+  flex-wrap: envoltura;
+  justificar-contenido: espacio-entre;
+  alinear-elementos: flex-start;
+  espacio: 12px;
+  margen inferior: 18px;
+}
+
+.panel-head h2 {
+  tamaño de fuente: 19px;
+  grosor de fuente: 700;
+}
+
+.panel-head h3 {
+  tamaño de fuente: 16px;
+  grosor de fuente: 700;
+}
+
+.silenciado {
+  color: var(--text-muted);
+  tamaño de fuente: 13px;
+}
+
+/* Chips de filtro de ruta */
+.route-filters {
+  pantalla: flexible;
+  flex-wrap: envoltura;
+  espacio: 6px;
+}
+
+.chip {
+  fondo: rgba(255, 255, 255, 0.04);
+  borde: 1px solid var(--border-sutil);
+  color: var(--text-muted);
+  relleno: 6px 12px;
+  radio de borde: 999px;
+  tamaño de fuente: 12px;
+  grosor de fuente: 600;
+  cursor: puntero;
+  transición: todos 0,2s;
+}
+
+.chip:hover {
+  color-borde: var(--border-glow);
+  color: var(--text-main);
+}
+
+.chip.activo {
+  fondo: var(--primary);
+  color del borde: var(--primary);
+  color: #fff;
+}
+
+/* Entradas y formularios */
+entrada, seleccionar {
+  fondo: rgba(10, 9, 22, 0.75);
+  borde: 1px solid var(--border-sutil);
+  radio-borde: var(--radius-sm);
+  color: var(--text-main);
+  relleno: 11px 14px;
+  familia de fuentes: heredar;
+  tamaño de fuente: 14px;
+  ancho: 100%;
+  esquema: ninguno;
+  transición: color de borde 0,2 s;
+}
+
+entrada:focus, seleccionar:focus {
+  color del borde: var(--primary);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18);
+}
+
+.barra-de-búsqueda-en-línea {
+  margen inferior: 16px;
+}
+
+.styled-form {
+  pantalla: flexible;
+  flex-direction: columna;
+  espacio: 14px;
+  margen superior: 14px;
+}
+
+.fila-formulario {
+  mostrar: cuadrícula;
+  columnas-de-plantilla-de-cuadrícula: 1fr 1fr;
+  espacio: 12px;
+}
+
+@media (max-width: 540px) {
+  .form-row { grid-template-columns: 1fr; }
+}
+
+.form-group etiqueta {
+  mostrar: bloque;
+  tamaño de fuente: 12px;
+  grosor de fuente: 600;
+  color: var(--text-muted);
+  margen inferior: 6px;
+}
+
+/* Botones */
+.btn-primary {
+  fondo: gradiente lineal(135deg, var(--primary), #6366f1);
+  color: #fff;
+  borde: ninguno;
+  relleno: 11px 18px;
+  radio-borde: var(--radius-sm);
+  familia de fuentes: heredar;
+  tamaño de fuente: 14px;
+  grosor de fuente: 700;
+  cursor: puntero;
+  transición: transformación 0,15 s, sombra de caja 0,2 s;
+  box-shadow: 0 6px 20px rgba(124, 92, 255, 0.35);
+}
+
+.btn-primary:hover {
+  transformar: translateY(-1px);
+  box-shadow: 0 8px 25px rgba(124, 92, 255, 0.5);
+}
+
+.btn-full { ancho: 100%; }
+
+.btn-ghost {
+  fondo: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  borde: 1px solid var(--border-sutil);
+  relleno: 9px 14px;
+  radio-borde: var(--radius-sm);
+  familia de fuentes: heredar;
+  tamaño de fuente: 13px;
+  grosor de fuente: 600;
+  cursor: puntero;
+  transición: todos 0,2s;
+  alineación de texto: centro;
+}
+
+.btn-ghost:hover {
+  color-borde: var(--border-glow);
+  fondo: rgba(124, 92, 255, 0.12);
+}
+
+.btn-danger-outline {
+  fondo: transparente;
+  color: #fca5a5;
+  borde: 1px sólido rgba(239, 68, 68, 0.35);
+  relleno: 9px 14px;
+  radio-borde: var(--radius-sm);
+  tamaño de fuente: 13px;
+  cursor: puntero;
+}
+
+.btn-link {
+  fondo: ninguno;
+  borde: ninguno;
+  color: #a78bfa;
+  grosor de fuente: 600;
+  tamaño de fuente: 13px;
+  cursor: puntero;
+}
+
+.btn-sm {
+  relleno: 6px 10px;
+  tamaño de fuente: 12px;
+  radio de borde: 8px;
+  borde: ninguno;
+  grosor de fuente: 600;
+  cursor: puntero;
+}
+
+.btn-wa {
+  fondo: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  borde: 1px sólido rgba(16, 185, 129, 0.3);
+  decoración de texto: ninguna;
+  mostrar: bloque en línea;
+}
+
+.btn-pay {
+  fondo: var(--primario-suave);
+  color: #c4b5fd;
+  borde: 1px solid var(--border-glow);
+}
+
+/* Tablas */
+.table-wrap {
+  desbordamiento-x: automático;
+  altura máxima: 540px;
+  desbordamiento-y: automático;
+}
+
+.tabla-de-datos {
+  ancho: 100%;
+  colapso de frontera: colapso;
+  tamaño de fuente: 13,5px;
+}
+
+.data-table th {
+  alineación de texto: izquierda;
+  relleno: 11px 12px;
+  color: var(--text-muted);
+  tamaño de fuente: 11,5px;
+  transformación de texto: mayúsculas;
+  espaciado entre letras: 0,05em;
+  borde inferior: 1px sólido var(--borde-sutil);
+  posición: pegajosa;
+  superior: 0;
+  fondo: var(--bg-surface-solid);
+  índice z: 2;
+}
+
+.data-table td {
+  relleno: 12px;
+  borde inferior: 1px sólido rgba(255, 255, 255, 0.04);
+  vertical-align: medio;
+}
+
+.data-table tr:hover td {
+  fondo: rgba(124, 92, 255, 0.06);
+}
+
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+.text-green { color: var(--green); }
+.text-amber { color: var(--amber); }
+.text-red { color: var(--red); }
+.font-bold { font-weight: 700; }
+
+.tag-tier {
+  tamaño de fuente: 10px;
+  grosor de fuente: 700;
+  relleno: 2px 7px;
+  radio de borde: 6px;
+  fondo: rgba(255,255,255,0.08);
+}
+.tier-DIAMOND { background: rgba(56, 189, 248, 0.16); color: #7dd3fc; }
+.tier-ORO { background: rgba(250, 204, 21, 0.16); color: #fde047; }
+.tier-PLATA { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; }
+
+/* Gráfico de barras estilo Quantix */
+.bar-chart-container {
+  pantalla: flexible;
+  flex-direction: columna;
+  espacio: 12px;
+}
+
+.barra-fila {
+  pantalla: flexible;
+  flex-direction: columna;
+  espacio: 5px;
+}
+
+.bar-labels {
+  pantalla: flexible;
+  justificar-contenido: espacio-entre;
+  tamaño de fuente: 12,5px;
+}
+
+.bar-track {
+  altura: 10px;
+  fondo: rgba(255, 255, 255, 0.06);
+  radio de borde: 999px;
+  desbordamiento: oculto;
+}
+
+.bar-fill {
+  altura: 100%;
+  fondo: gradiente lineal(90 grados, #6366f1, #a855f7);
+  radio de borde: 999px;
+  transición: ancho 0,4s facilidad;
+}
+
+/* Lista de actividades */
+.activity-list {
+  pantalla: flexible;
+  flex-direction: columna;
+  espacio: 10px;
+}
+
+.activity-item {
+  pantalla: flexible;
+  justificar-contenido: espacio-entre;
+  alinear-elementos: centro;
+  relleno: 10px 12px;
+  radio-borde: var(--radius-sm);
+  fondo: rgba(255, 255, 255, 0.03);
+  borde: 1px sólido rgba(255, 255, 255, 0.04);
+}
+
+/* Controles de inventario */
+.stock-stepper {
+  display: inline-flex;
+  alinear-elementos: centro;
+  espacio: 8px;
+}
+
+.step-btn {
+  ancho: 28px;
+  altura: 28px;
+  radio de borde: 8px;
+  borde: 1px solid var(--border-sutil);
+  fondo: rgba(255, 255, 255, 0.06);
+  color: var(--text-main);
+  grosor de fuente: 700;
+  cursor: puntero;
+}
+
+.step-btn:hover {
+  fondo: var(--primary);
+  color del borde: var(--primary);
+}
+
+.inv-controls {
+  pantalla: flexible;
+  alinear-elementos: centro;
+  espacio: 14px;
+}
+
+.toggle-label {
+  pantalla: flexible;
+  alinear-elementos: centro;
+  espacio: 6px;
+  tamaño de fuente: 13px;
+  color: var(--text-muted);
+  cursor: puntero;
+}
+.toggle-label input { width: auto; }
+
+/* Tarjeta de pasos */
+.steps-card {
+  fondo: rgba(124, 92, 255, 0.09);
+  borde: 1px solid var(--border-glow);
+  radio-borde: var(--radius-md);
+  relleno: 16px 18px;
+  margen superior: 14px;
+  tamaño de fuente: 13px;
+}
+.steps-card h4 { margin-bottom: 8px; color: #ddd6fe; }
+.steps-card ol { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.steps-card a { color: #a78bfa; }
+
+.divider {
+  borde: ninguno;
+  borde superior: 1px sólido var(--borde sutil);
+  margen: 22px 0;
+}
+
+/* Modales y Toast */
+.modal-overlay {
+  posición: fija;
+  recuadro: 0;
+  fondo: rgba(5, 4, 12, 0.78);
+  filtro de fondo: desenfoque (6px);
+  Índice z: 900;
+  pantalla: flexible;
+  alinear-elementos: centro;
+  justificar-contenido: centro;
+  relleno: 16px;
+}
+
+.modal-card {
+  ancho: 100%;
+  ancho máximo: 520px;
+  relleno: 24px;
+  fondo: var(--bg-surface-solid);
+}
+
+.btn-icon {
+  fondo: ninguno;
+  borde: ninguno;
+  color: var(--text-muted);
+  tamaño de fuente: 18px;
+  cursor: puntero;
+}
+
+.tostada {
+  posición: fija;
+  parte inferior: 24px;
+  derecha: 24px;
+  fondo: #1e1b38;
+  borde: 1px solid var(--border-glow);
+  color: #fff;
+  relleno: 12px 18px;
+  radio de borde: 12px;
+  tamaño de fuente: 13,5px;
+  grosor de fuente: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  Índice z: 1200;
+  opacidad: 0;
+  transformar: translateY(15px);
+  eventos de puntero: ninguno;
+  transición: todos 0,25 s de facilidad;
+}
+
+.toast.show {
+  opacidad: 1;
+  transformar: translateY(0);
+}
+
 /* Estilos nuevos para Carrito y Carga Rápida por Voz */
 .voice-box {
   background: rgba(124, 92, 255, 0.08);
