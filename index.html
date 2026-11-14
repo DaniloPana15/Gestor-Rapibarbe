@@ -2,548 +2,412 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Rapibarbe — Sistema Centralizado de Gestión</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google Fonts: Inter -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rapibarbe — Sistema de Gestión & Cobranzas</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-          },
-          colors: {
-            navy: {
-              900: '#0F172A',
-              800: '#1E293B',
-              700: '#334155',
-            }
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      background-color: #F8FAFC;
-      color: #0F172A;
-      -webkit-tap-highlight-color: transparent;
-    }
-    /* Custom scrollbar for sleek SaaS look */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #F1F5F9;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #CBD5E1;
-      border-radius: 9999px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #94A3B8;
-    }
-    .tab-active {
-      background-color: #0F172A;
-      color: #FFFFFF;
-      box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.15);
-    }
-    .tab-inactive {
-      background-color: #FFFFFF;
-      color: #475569;
-    }
-    .tab-inactive:hover {
-      background-color: #F1F5F9;
-      color: #0F172A;
-    }
-  </style>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
 </head>
-<body class="min-h-screen flex flex-col pb-20 md:pb-8">
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
 
-  <!-- TOP HEADER -->
-  <header class="bg-navy-900 text-white sticky top-0 z-30 shadow-md">
-    <div class="max-w-7xl mx-auto px-4 py-3.5 flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-navy-900 font-extrabold text-xl shadow-inner">
-          R
-        </div>
-        <div>
-          <h1 class="text-lg sm:text-xl font-extrabold tracking-tight leading-none">RAPIBARBE</h1>
-          <p class="text-xs text-slate-300 mt-0.5">Gestión Centralizada de Rutas, Deudas y Stock</p>
-        </div>
+  <!-- PANTALLA DE BLOQUEO / PRIVACIDAD -->
+  <div id="lock-screen" class="lock-overlay">
+    <div class="lock-card glass-panel">
+      <div class="brand-badge">
+        <span class="brand-icon">✂️</span>
+        <span>RAPIBARBE PRO</span>
       </div>
-
-      <!-- Backup & Sync Controls -->
-      <div class="flex items-center gap-2 flex-wrap">
-        <button onclick="exportBackupJSON()" title="Descargar respaldo JSON para pasar por WhatsApp" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-xs font-semibold text-emerald-400 border border-slate-700 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-          <span class="hidden sm:inline">Respaldo</span> JSON
-        </button>
-
-        <button onclick="exportCSV()" title="Descargar planilla CSV compatible con Excel" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-xs font-semibold text-sky-400 border border-slate-700 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-          Excel CSV
-        </button>
-
-        <label class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-xs font-semibold text-amber-300 border border-slate-700 cursor-pointer transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-          <span>Importar</span>
-          <input type="file" id="importJsonInput" accept=".json" class="hidden" onchange="importBackupJSON(event)" />
-        </label>
-
-        <button onclick="openResetModal()" title="Restaurar datos originales" class="p-2 rounded-xl bg-navy-800 hover:bg-rose-950 text-slate-400 hover:text-rose-400 border border-slate-700 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        </button>
-      </div>
+      <h2>Acceso Privado</h2>
+      <p>Ingresá tu PIN de administrador para ver clientes, saldos y stock.</p>
+      <form id="login-form" onsubmit="unlockApp(event)">
+        <input type="password" id="pin-input" maxlength="8" placeholder="PIN (por defecto: 1234)" required autofocus />
+        <button type="submit" class="btn-primary btn-full">Entrar al Sistema →</button>
+      </form>
+      <p id="login-error" class="error-text" style="display:none;">PIN incorrecto. Probá con 1234.</p>
+      <span class="hint-text">Podés cambiar tu PIN desde la pestaña Configuración / Nube.</span>
     </div>
+  </div>
 
-    <!-- DESKTOP NAVIGATION TABS -->
-    <nav class="hidden md:block bg-slate-100 border-b border-slate-200">
-      <div class="max-w-7xl mx-auto px-4 py-2.5 flex gap-2">
-        <button onclick="switchTab('dashboard')" id="nav-desk-dashboard" class="tab-active flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-          1. Resumen &amp; Cobranzas
-        </button>
-        <button onclick="switchTab('operacion')" id="nav-desk-operacion" class="tab-inactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          2. Cargar Venta o Cobro
-        </button>
-        <button onclick="switchTab('clientes')" id="nav-desk-clientes" class="tab-inactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-          3. Clientes y Deudores
-        </button>
-        <button onclick="switchTab('inventario')" id="nav-desk-inventario" class="tab-inactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-          4. Inventario / Stock
-        </button>
-      </div>
-    </nav>
-  </header>
-
-  <!-- MAIN CONTENT CONTAINER -->
-  <main class="flex-1 max-w-7xl w-full mx-auto px-4 py-5">
-
-    <!-- =================================================================== -->
-    <!-- TAB 1: RESUMEN & COBRANZAS (DASHBOARD)                              -->
-    <!-- =================================================================== -->
-    <section id="tab-dashboard" class="space-y-6">
-      <!-- KPI CARDS -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Total por Cobrar -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-lg">En la calle</span>
-            <div class="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
+  <!-- APLICACIÓN PRINCIPAL -->
+  <div id="app-shell" class="app-container" style="display:none;">
+    
+    <!-- BARRA SUPERIOR TIPO SAAS MODERNO -->
+    <header class="topbar glass-panel">
+      <div class="topbar-left">
+        <div class="logo-mark">✂️</div>
+        <div>
+          <h1 class="brand-title">Rapibarbe <span class="pill-tag">Distribuidora</span></h1>
+          <div class="sync-indicator" id="sync-status">
+            <span class="dot dot-local"></span> Guardado local activo
           </div>
-          <p class="text-sm text-slate-500 mt-3 font-medium">Total por Cobrar</p>
-          <p id="kpi-total-deuda" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-0.5">$0</p>
-        </div>
-
-        <!-- Deudores Activos -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg">Cuentas abiertas</span>
-            <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-            </div>
-          </div>
-          <p class="text-sm text-slate-500 mt-3 font-medium">Clientes con Deuda</p>
-          <p id="kpi-cant-deudores" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-0.5">0</p>
-        </div>
-
-        <!-- Cobros Registrados -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg">Ingresos</span>
-            <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            </div>
-          </div>
-          <p class="text-sm text-slate-500 mt-3 font-medium">Cobros y Ventas Contado</p>
-          <p id="kpi-total-cobrado" class="text-2xl sm:text-3xl font-extrabold text-emerald-600 mt-0.5">$0</p>
-        </div>
-
-        <!-- Valor Inventario -->
-        <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-          <div class="flex items-center justify-between">
-            <span class="text-xs font-bold uppercase tracking-wider text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg">Mercadería</span>
-            <div class="w-9 h-9 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-            </div>
-          </div>
-          <p class="text-sm text-slate-500 mt-3 font-medium">Valor Stock (Venta)</p>
-          <p id="kpi-valor-stock" class="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-0.5">$0</p>
         </div>
       </div>
 
-      <!-- HOJA DE RUTA DE COBRANZA -->
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 class="text-lg font-extrabold text-slate-900">Hoja de Ruta de Cobranzas</h2>
-            <p class="text-sm text-slate-500">Elegí el día de recorrido para ver a quién pasarle a cobrar hoy</p>
-          </div>
-          <div id="ruta-subtotal-badge" class="inline-flex items-center gap-2 bg-rose-50 border border-rose-200 text-rose-800 px-3.5 py-2 rounded-xl text-sm font-bold">
-            <span>Subtotal ruta:</span>
-            <span id="ruta-subtotal-monto">$0</span>
-          </div>
-        </div>
+      <nav class="nav-pills" role="tablist">
+        <button class="nav-pill active" data-tab="dashboard" onclick="switchTab('dashboard')">Resumen & Rutas</button>
+        <button class="nav-pill" data-tab="movimientos" onclick="switchTab('movimientos')">+ Venta / Cobro</button>
+        <button class="nav-pill" data-tab="clientes" onclick="switchTab('clientes')">Clientes (136)</button>
+        <button class="nav-pill" data-tab="inventario" onclick="switchTab('inventario')">Stock (179)</button>
+        <button class="nav-pill" data-tab="nube" onclick="switchTab('nube')">☁️ Nube & PIN</button>
+      </nav>
 
-        <!-- Filter Pills -->
-        <div class="flex flex-wrap gap-2 pb-4 border-b border-slate-100" id="ruta-filters">
-          <button onclick="setRutaFilter('TODOS')" data-ruta="TODOS" class="ruta-btn bg-navy-900 text-white px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-            Todos los Deudores
-          </button>
-          <button onclick="setRutaFilter('LUNES / VIERNES')" data-ruta="LUNES / VIERNES" class="ruta-btn bg-slate-100 text-slate-700 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-            Lun/Vie · Celina / Olavarría
-          </button>
-          <button onclick="setRutaFilter('MARTES')" data-ruta="MARTES" class="ruta-btn bg-slate-100 text-slate-700 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-            Martes · Liniers / Chacarita
-          </button>
-          <button onclick="setRutaFilter('JUEVES')" data-ruta="JUEVES" class="ruta-btn bg-slate-100 text-slate-700 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-            Jueves · Virreyes / Sur
-          </button>
-          <button onclick="setRutaFilter('VIERNES')" data-ruta="VIERNES" class="ruta-btn bg-slate-100 text-slate-700 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-            Viernes · Pompeya / Flores
-          </button>
-          <button onclick="setRutaFilter('A DEFINIR')" data-ruta="A DEFINIR" class="ruta-btn bg-slate-100 text-slate-700 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition">
-            Otras / A Definir
-          </button>
-        </div>
+      <div class="topbar-right">
+        <button class="btn-ghost" onclick="syncFromCloud()" title="Sincronizar con la nube">↻ Sincronizar</button>
+        <button class="btn-ghost" onclick="lockApp()" title="Bloquear pantalla">🔒</button>
+      </div>
+    </header>
 
-        <!-- Debtors Cards Grid -->
-        <div id="dashboard-debtors-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-4">
-          <!-- Rendered dynamically -->
+    <!-- KPI CARDS -->
+    <section class="kpi-grid">
+      <div class="kpi-card glass-panel highlight-purple">
+        <div class="kpi-header">
+          <span>Total en la Calle (Por Cobrar)</span>
+          <span class="kpi-badge badge-purple">Deuda Activa</span>
         </div>
+        <div class="kpi-value" id="kpi-deuda">$0</div>
+        <div class="kpi-sub" id="kpi-deudores-count">0 barberos con saldo pendiente</div>
+      </div>
+
+      <div class="kpi-card glass-panel">
+        <div class="kpi-header">
+          <span>Cobrado (Abonos / Pagos)</span>
+          <span class="kpi-badge badge-green">Ingresos</span>
+        </div>
+        <div class="kpi-value text-green" id="kpi-cobrado">$0</div>
+        <div class="kpi-sub">Entregas a cuenta registradas</div>
+      </div>
+
+      <div class="kpi-card glass-panel">
+        <div class="kpi-header">
+          <span>Ventas Totales</span>
+          <span class="kpi-badge badge-blue">Facturación</span>
+        </div>
+        <div class="kpi-value" id="kpi-ventas">$0</div>
+        <div class="kpi-sub" id="kpi-ventas-split">Contado + Fiado</div>
+      </div>
+
+      <div class="kpi-card glass-panel">
+        <div class="kpi-header">
+          <span>Alertas de Stock</span>
+          <span class="kpi-badge badge-amber">Inventario</span>
+        </div>
+        <div class="kpi-value text-amber" id="kpi-stock-bajo">0</div>
+        <div class="kpi-sub">Artículos con 3 o menos unidades</div>
       </div>
     </section>
 
-    <!-- =================================================================== -->
-    <!-- TAB 2: CARGAR VENTA O COBRO (OPERACIÓN RÁPIDA)                      -->
-    <!-- =================================================================== -->
-    <section id="tab-operacion" class="hidden space-y-6">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <!-- Quick Form -->
-        <div class="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6">
-          <div class="flex items-center justify-between mb-4">
+    <!-- TAB 1: DASHBOARD & HOJA DE RUTA -->
+    <main id="tab-dashboard" class="tab-content active">
+      <div class="dashboard-split">
+        <!-- Columna Izquierda: Hoja de Ruta y Deudores -->
+        <div class="glass-panel panel-box">
+          <div class="panel-head">
             <div>
-              <h2 class="text-lg font-extrabold text-slate-900">Registrar Movimiento</h2>
-              <p class="text-xs text-slate-500">Se actualiza el saldo del cliente automáticamente</p>
+              <h2>Hoja de Ruta & Cobranzas</h2>
+              <p class="muted">Filtrá por día de recorrido para cobrar y mandar WhatsApp directo.</p>
             </div>
-            <button type="button" onclick="openNewClientModal()" class="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition">
-              + Nuevo Cliente
-            </button>
+            <div class="route-filters" id="route-filters">
+              <button class="chip active" onclick="setRouteFilter('TODOS', this)">Todos</button>
+              <button class="chip" onclick="setRouteFilter('LUNES / VIERNES', this)">Lun/Vie (Celina)</button>
+              <button class="chip" onclick="setRouteFilter('MARTES', this)">Martes (Liniers)</button>
+              <button class="chip" onclick="setRouteFilter('JUEVES', this)">Jueves (Virreyes)</button>
+              <button class="chip" onclick="setRouteFilter('VIERNES', this)">Viernes (Flores/Pompeya)</button>
+            </div>
           </div>
 
-          <form id="quick-op-form" onsubmit="handleQuickOperation(event)" class="space-y-4">
-            <!-- Client Searchable Select -->
-            <div>
-              <label class="block text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5">1. Cliente / Barbería *</label>
-              <input type="text" id="op-client-search" placeholder="Escribí para filtrar barbería o barbero..." oninput="filterClientDropdown()" class="w-full px-3.5 py-2.5 mb-1.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-navy-900 bg-slate-50" />
-              <select id="op-client-select" required onchange="updateSelectedClientPreview()" class="w-full px-3.5 py-3 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-navy-900">
-                <!-- Populated by JS -->
-              </select>
-              <div id="op-client-balance-preview" class="mt-1.5 text-xs font-semibold text-slate-500 px-1">
-                Saldo actual: $0
+          <div class="search-bar-inline">
+            <input type="text" id="dash-search" placeholder="Buscar barbería, barbero o zona en deuda..." oninput="renderDashboard()" />
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Barbería / Barbero</th>
+                  <th>Zona & Ruta</th>
+                  <th class="text-right">Saldo Pendiente</th>
+                  <th class="text-right">Acciones Rápidas</th>
+                </tr>
+              </thead>
+              <tbody id="dash-debtors-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Columna Derecha: Gráfico Visual + Últimos Movimientos -->
+        <div class="side-stack">
+          <div class="glass-panel panel-box">
+            <div class="panel-head">
+              <div>
+                <h3>Deuda por Ruta</h3>
+                <p class="muted">Distribución del dinero en la calle</p>
               </div>
             </div>
+            <div id="route-bars" class="bar-chart-container"></div>
+          </div>
 
-            <!-- Operation Type -->
-            <div>
-              <label class="block text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5">2. Tipo de Operación *</label>
-              <div class="grid grid-cols-3 gap-2">
-                <label class="cursor-pointer">
-                  <input type="radio" name="op-tipo" value="ABONO / PAGO" class="peer sr-only" checked />
-                  <div class="p-2.5 rounded-xl border-2 border-slate-200 text-center peer-checked:border-emerald-600 peer-checked:bg-emerald-50 peer-checked:text-emerald-800 transition">
-                    <span class="block text-xs font-extrabold">ABONO / PAGO</span>
-                    <span class="block text-[10px] text-slate-500 mt-0.5">Resta deuda</span>
-                  </div>
-                </label>
-                <label class="cursor-pointer">
-                  <input type="radio" name="op-tipo" value="VENTA FIADA" class="peer sr-only" />
-                  <div class="p-2.5 rounded-xl border-2 border-slate-200 text-center peer-checked:border-rose-600 peer-checked:bg-rose-50 peer-checked:text-rose-800 transition">
-                    <span class="block text-xs font-extrabold">VENTA FIADA</span>
-                    <span class="block text-[10px] text-slate-500 mt-0.5">Suma deuda</span>
-                  </div>
-                </label>
-                <label class="cursor-pointer">
-                  <input type="radio" name="op-tipo" value="VENTA CONTADO" class="peer sr-only" />
-                  <div class="p-2.5 rounded-xl border-2 border-slate-200 text-center peer-checked:border-sky-600 peer-checked:bg-sky-50 peer-checked:text-sky-800 transition">
-                    <span class="block text-xs font-extrabold">CONTADO</span>
-                    <span class="block text-[10px] text-slate-500 mt-0.5">No altera deuda</span>
-                  </div>
-                </label>
+          <div class="glass-panel panel-box">
+            <div class="panel-head">
+              <div>
+                <h3>Últimos Movimientos</h3>
+                <p class="muted">Ventas y cobranzas recientes</p>
               </div>
+              <button class="btn-link" onclick="switchTab('movimientos')">Ver todos →</button>
             </div>
+            <div id="recent-movs-list" class="activity-list"></div>
+          </div>
+        </div>
+      </div>
+    </main>
 
-            <!-- Amount & Payment Method -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5">3. Monto ($) *</label>
-                <input type="number" id="op-monto" required min="1" step="any" placeholder="Ej: 45000" class="w-full px-3.5 py-3 rounded-xl border border-slate-300 text-base font-extrabold text-slate-900 focus:outline-none focus:ring-2 focus:ring-navy-900" />
+    <!-- TAB 2: CARGAR VENTA O COBRO -->
+    <main id="tab-movimientos" class="tab-content">
+      <div class="two-col-form">
+        <div class="glass-panel panel-box">
+          <h2>Registrar Movimiento</h2>
+          <p class="muted">Cada carga actualiza automáticamente la deuda del cliente y se guarda.</p>
+          
+          <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Fecha</label>
+                <input type="date" id="mov-fecha" required />
               </div>
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5">4. Medio de Pago</label>
-                <select id="op-medio" class="w-full px-3.5 py-3 rounded-xl border border-slate-300 text-sm font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-navy-900">
-                  <option value="EFECTIVO">EFECTIVO</option>
-                  <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-                  <option value="MERCADO PAGO">MERCADO PAGO</option>
-                  <option value="CTA CTE / FIADO">CTA CTE / FIADO</option>
+              <div class="form-group">
+                <label>Tipo de Operación</label>
+                <select id="mov-tipo" required>
+                  <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
+                  <option value="VENTA FIADA">📝 VENTA FIADA (Suma deuda)</option>
+                  <option value="VENTA CONTADO">✅ VENTA CONTADO (No altera deuda)</option>
                 </select>
               </div>
             </div>
 
-            <!-- Detail & Date -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div class="sm:col-span-2">
-                <label class="block text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5">5. Detalle / Productos</label>
-                <input type="text" id="op-detalle" placeholder="Ej: 2 Dorco + 1 Cool Care / Entrega semanal" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-navy-900" />
+            <div class="form-group">
+              <label>Seleccionar Cliente (Barbería — Barbero)</label>
+              <input type="text" id="mov-cliente-search" list="clientes-datalist" placeholder="Escribí el nombre de la barbería o barbero..." required />
+              <datalist id="clientes-datalist"></datalist>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Monto ($ ARS)</label>
+                <input type="number" id="mov-monto" min="1" step="any" placeholder="Ej: 45000" required />
               </div>
-              <div>
-                <label class="block text-xs font-bold uppercase tracking-wide text-slate-600 mb-1.5">Fecha</label>
-                <input type="date" id="op-fecha" required class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-navy-900" />
+              <div class="form-group">
+                <label>Medio de Pago</label>
+                <select id="mov-medio">
+                  <option value="EFECTIVO">Efectivo</option>
+                  <option value="TRANSFERENCIA">Transferencia / MP</option>
+                  <option value="CUENTA CORRIENTE">Cuenta Corriente (Fiado)</option>
+                </select>
               </div>
             </div>
 
-            <button type="submit" class="w-full py-3.5 px-4 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
-              <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-              Guardar Movimiento Ahora
-            </button>
+            <div class="form-group">
+              <label>Detalle de Productos / Pedido</label>
+              <input type="text" id="mov-detalle" placeholder="Ej: 2 After Shave, 1 Cool Care, 1 Caja Filos Dorco..." />
+            </div>
+
+            <div class="form-group">
+              <label>Observaciones (Opcional)</label>
+              <input type="text" id="mov-obs" placeholder="Ej: Pasa el viernes por el resto" />
+            </div>
+
+            <button type="submit" class="btn-primary btn-full">Guardar Movimiento</button>
           </form>
         </div>
 
-        <!-- Recent Movements History -->
-        <div class="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 flex flex-col">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+        <div class="glass-panel panel-box">
+          <div class="panel-head">
             <div>
-              <h2 class="text-lg font-extrabold text-slate-900">Historial de Movimientos</h2>
-              <p class="text-xs text-slate-500">Últimas ventas, fiados y cobranzas registradas</p>
+              <h2>Historial Completo</h2>
+              <p class="muted">Podés eliminar un registro si te equivocaste al cargarlo.</p>
             </div>
-            <input type="text" id="mov-search" oninput="renderMovements()" placeholder="Buscar movimiento..." class="px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-navy-900 w-full sm:w-56" />
           </div>
-
-          <div class="overflow-x-auto flex-1">
-            <table class="w-full text-left border-collapse">
+          <div class="table-wrap">
+            <table class="data-table">
               <thead>
-                <tr class="border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500">
-                  <th class="py-2.5 px-2">Fecha</th>
-                  <th class="py-2.5 px-2">Cliente</th>
-                  <th class="py-2.5 px-2">Tipo</th>
-                  <th class="py-2.5 px-2">Detalle</th>
-                  <th class="py-2.5 px-2 text-right">Monto</th>
-                  <th class="py-2.5 px-2 text-center">Borrar</th>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Tipo</th>
+                  <th class="text-right">Monto</th>
+                  <th></th>
                 </tr>
               </thead>
-              <tbody id="movements-tbody" class="divide-y divide-slate-100 text-sm">
-                <!-- Populated by JS -->
-              </tbody>
+              <tbody id="all-movs-body"></tbody>
             </table>
           </div>
         </div>
       </div>
-    </section>
+    </main>
 
-    <!-- =================================================================== -->
-    <!-- TAB 3: CLIENTES Y DEUDORES (CRM)                                    -->
-    <!-- =================================================================== -->
-    <section id="tab-clientes" class="hidden space-y-4">
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+    <!-- TAB 3: CLIENTES -->
+    <main id="tab-clientes" class="tab-content">
+      <div class="glass-panel panel-box">
+        <div class="panel-head">
           <div>
-            <h2 class="text-lg font-extrabold text-slate-900">Base Única de Clientes (<span id="crm-total-count">136</span>)</h2>
-            <p class="text-xs text-slate-500">Consultá saldos, rutas y mandá mensajes directos por WhatsApp</p>
+            <h2>Directorio de Barberías y Barberos</h2>
+            <p class="muted">Buscá por local, nombre, barrio o día de visita.</p>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <button onclick="openNewClientModal()" class="px-4 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-bold transition">
-              + Agregar Barbería / Barbero
-            </button>
-          </div>
+          <button class="btn-primary" onclick="openClientModal()">+ Nuevo Cliente</button>
         </div>
 
-        <!-- Search & Status Filter -->
-        <div class="flex flex-col sm:flex-row gap-3 my-4">
-          <div class="relative flex-1">
-            <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input type="text" id="crm-search" oninput="renderCRM()" placeholder="Buscar por barbería, barbero o zona (ej: Liniers, Celina, Richar)..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-navy-900" />
-          </div>
-          <div class="flex rounded-xl bg-slate-100 p-1">
-            <button onclick="setCrmFilter('TODOS')" id="crm-filter-TODOS" class="crm-filter-btn px-3.5 py-2 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition">Todos</button>
-            <button onclick="setCrmFilter('DEBE')" id="crm-filter-DEBE" class="crm-filter-btn px-3.5 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">Solo Deudores</button>
-            <button onclick="setCrmFilter('AL DIA')" id="crm-filter-AL DIA" class="crm-filter-btn px-3.5 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">Al Día</button>
-          </div>
+        <div class="search-bar-inline">
+          <input type="text" id="cli-search" placeholder="Filtrar clientes por nombre, zona, ruta o categoría..." oninput="renderClients()" />
         </div>
 
-        <!-- Desktop Table -->
-        <div class="hidden md:block overflow-x-auto">
-          <table class="w-full text-left border-collapse">
+        <div class="table-wrap">
+          <table class="data-table">
             <thead>
-              <tr class="border-b border-slate-200 text-[11px] font-bold uppercase text-slate-500">
-                <th class="py-3 px-3">Barbería / Barbero</th>
-                <th class="py-3 px-3">Zona &amp; Ruta</th>
-                <th class="py-3 px-3">Teléfono / WhatsApp</th>
-                <th class="py-3 px-3 text-right">Saldo Actual</th>
-                <th class="py-3 px-3 text-center">Estado</th>
-                <th class="py-3 px-3 text-right">Acciones</th>
+              <tr>
+                <th>Barbería</th>
+                <th>Barbero</th>
+                <th>Zona / Dirección</th>
+                <th>Ruta</th>
+                <th>Nivel</th>
+                <th class="text-right">Deuda Actual</th>
+                <th class="text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody id="crm-tbody" class="divide-y divide-slate-100 text-sm">
-              <!-- Populated by JS -->
-            </tbody>
+            <tbody id="clients-body"></tbody>
           </table>
         </div>
-
-        <!-- Mobile Cards -->
-        <div id="crm-mobile-cards" class="md:hidden space-y-3">
-          <!-- Populated by JS -->
-        </div>
       </div>
-    </section>
+    </main>
 
-    <!-- =================================================================== -->
-    <!-- TAB 4: INVENTARIO / STOCK                                           -->
-    <!-- =================================================================== -->
-    <section id="tab-inventario" class="hidden space-y-4">
-      <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+    <!-- TAB 4: INVENTARIO -->
+    <main id="tab-inventario" class="tab-content">
+      <div class="glass-panel panel-box">
+        <div class="panel-head">
           <div>
-            <h2 class="text-lg font-extrabold text-slate-900">Control de Inventario (<span id="inv-total-count">179</span> productos)</h2>
-            <p class="text-xs text-slate-500">Tocá + o - para descontar mercadería rápido cuando armás pedidos</p>
+            <h2>Inventario de Insumos y Máquinas</h2>
+            <p class="muted">Control rápido de stock con botones +1 / -1 y precios de venta.</p>
           </div>
-          <button onclick="openNewProductModal()" class="px-4 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-bold transition self-start sm:self-auto">
-            + Nuevo Producto
-          </button>
-        </div>
-
-        <!-- Search & Stock Filter -->
-        <div class="flex flex-col sm:flex-row gap-3 my-4">
-          <div class="relative flex-1">
-            <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-            <input type="text" id="inv-search" oninput="renderInventory()" placeholder="Buscar insumo, máquina, cuchilla, capa, after shave..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-navy-900" />
-          </div>
-          <div class="flex rounded-xl bg-slate-100 p-1">
-            <button onclick="setInvFilter('TODOS')" id="inv-filter-TODOS" class="inv-filter-btn px-3 py-2 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition">Todos</button>
-            <button onclick="setInvFilter('CON_STOCK')" id="inv-filter-CON_STOCK" class="inv-filter-btn px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">Con Stock</button>
-            <button onclick="setInvFilter('REPONER')" id="inv-filter-REPONER" class="inv-filter-btn px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition">A Reponer (≤3)</button>
+          <div class="inv-controls">
+            <label class="toggle-label">
+              <input type="checkbox" id="filter-low-stock" onchange="renderInventory()" />
+              Solo stock bajo (≤ 3)
+            </label>
+            <button class="btn-primary" onclick="openProductModal()">+ Nuevo Producto</button>
           </div>
         </div>
 
-        <!-- Inventory List -->
-        <div id="inventory-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <!-- Populated by JS -->
+        <div class="search-bar-inline">
+          <input type="text" id="inv-search" placeholder="Buscar cuchilla, máquina VGR, capa, after shave, filos..." oninput="renderInventory()" />
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Producto</th>
+                <th class="text-center">Stock</th>
+                <th class="text-right">Precio Venta</th>
+                <th class="text-right">Ajuste Rápido</th>
+              </tr>
+            </thead>
+            <tbody id="inv-body"></tbody>
+          </table>
         </div>
       </div>
-    </section>
+    </main>
 
-  </main>
-
-  <!-- =================================================================== -->
-  <!-- MOBILE BOTTOM NAVIGATION BAR                                        -->
-  <!-- =================================================================== -->
-  <nav class="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 z-30 flex justify-around py-1.5 px-1 shadow-lg">
-    <button onclick="switchTab('dashboard')" id="nav-mob-dashboard" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-navy-900 font-bold text-[11px]">
-      <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-      Rutas
-    </button>
-    <button onclick="switchTab('operacion')" id="nav-mob-operacion" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-500 font-medium text-[11px]">
-      <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-      Cargar
-    </button>
-    <button onclick="switchTab('clientes')" id="nav-mob-clientes" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-500 font-medium text-[11px]">
-      <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-      Clientes
-    </button>
-    <button onclick="switchTab('inventario')" id="nav-mob-inventario" class="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-500 font-medium text-[11px]">
-      <svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
-      Stock
-    </button>
-  </nav>
-
-  <!-- =================================================================== -->
-  <!-- MODALS (COBRO RÁPIDO, NUEVO CLIENTE, EDITAR CLIENTE, NUEVO PROD)    -->
-  <!-- =================================================================== -->
-
-  <!-- 1. Modal Registrar Cobro / Fiado Rápido -->
-  <div id="modal-quick-cobro" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-      <div class="flex items-center justify-between mb-3">
-        <h3 class="text-lg font-extrabold text-slate-900" id="modal-cobro-title">Registrar Cobro</h3>
-        <button onclick="closeModal('modal-quick-cobro')" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">✕</button>
-      </div>
-      <div class="bg-slate-50 rounded-xl p-3 mb-4 border border-slate-200">
-        <p class="text-sm font-bold text-slate-900" id="modal-cobro-client-name">Barbería - Barbero</p>
-        <p class="text-xs text-slate-500 mt-0.5">Deuda actual: <span id="modal-cobro-current-debt" class="font-extrabold text-rose-600">$0</span></p>
-      </div>
-      <form onsubmit="submitModalCobro(event)" class="space-y-3.5">
-        <input type="hidden" id="modal-cobro-client-id" />
-        <div>
-          <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Acción</label>
-          <select id="modal-cobro-tipo" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-bold bg-white">
-            <option value="ABONO / PAGO">ABONO / PAGO (Resta deuda)</option>
-            <option value="VENTA FIADA">VENTA FIADA (Suma deuda)</option>
-          </select>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Monto ($)</label>
-            <input type="number" id="modal-cobro-monto" required min="1" step="any" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-base font-extrabold" />
+    <!-- TAB 5: NUBE GRATUITA & SEGURIDAD -->
+    <main id="tab-nube" class="tab-content">
+      <div class="two-col-form">
+        <div class="glass-panel panel-box">
+          <h2>☁️ Sincronización en la Nube Gratis</h2>
+          <p class="muted">Como GitHub Pages es una web estática, conectala a una base de datos gratuita (JSONBin.io) para que todo lo que cargues en el celular aparezca al instante en la compu.</p>
+          
+          <div class="steps-card">
+            <h4>¿Cómo activarlo en 2 minutos? (100% Gratis)</h4>
+            <ol>
+              <li>Entrá a <a href="https://jsonbin.io" target="_blank">jsonbin.io</a> y creá una cuenta gratis con tu Gmail.</li>
+              <li>En el menú izquierdo entrá a <strong>API Keys</strong> y copiá tu <code>X-Master-Key</code>.</li>
+              <li>Pegala acá abajo y tocá <strong>"Crear Nube Automática"</strong>. ¡Listo!</li>
+            </ol>
           </div>
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Medio</label>
-            <select id="modal-cobro-medio" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold bg-white">
-              <option value="EFECTIVO">EFECTIVO</option>
-              <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-              <option value="MERCADO PAGO">MERCADO PAGO</option>
-            </select>
+
+          <form onsubmit="saveCloudConfig(event)" class="styled-form">
+            <div class="form-group">
+              <label>X-Master-Key (de JSONBin.io)</label>
+              <input type="password" id="cloud-key" placeholder="$2a$10$..." />
+            </div>
+            <div class="form-group">
+              <label>Bin ID (se completa solo al crear la nube, o pegalo si ya lo tenés)</label>
+              <input type="text" id="cloud-bin" placeholder="Ej: 6736a9b1ad19ca34f8c..." />
+            </div>
+            <div class="form-row">
+              <button type="button" class="btn-primary" onclick="createCloudBin()">✨ Crear Nube Automática</button>
+              <button type="submit" class="btn-ghost">Guardar Configuración</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="glass-panel panel-box">
+          <h2>🔒 Privacidad y Respaldo Manual</h2>
+          <p class="muted">Protegé el acceso con tu propio PIN y descargá copias de seguridad cuando quieras.</p>
+          
+          <form onsubmit="updatePin(event)" class="styled-form">
+            <div class="form-group">
+              <label>Nuevo PIN de Acceso (4 a 8 números)</label>
+              <input type="password" id="new-pin" maxlength="8" placeholder="Ej: 2026" required />
+            </div>
+            <button type="submit" class="btn-primary">Cambiar PIN</button>
+          </form>
+
+          <hr class="divider" />
+
+          <h3>Copias de Seguridad (Archivo)</h3>
+          <p class="muted">Exportá toda tu base a un archivo JSON o restaurá uno anterior.</p>
+          <div class="form-row" style="margin-top:12px;">
+            <button type="button" class="btn-ghost" onclick="exportBackup()">⬇ Descargar Respaldo (.json)</button>
+            <label class="btn-ghost file-btn">
+              ⬆ Importar Respaldo
+              <input type="file" accept=".json" onchange="importBackup(event)" hidden />
+            </label>
+          </div>
+          <div style="margin-top:16px;">
+            <button type="button" class="btn-danger-outline" onclick="resetToExcelDefault()">Restaurar datos originales del Excel</button>
           </div>
         </div>
-        <div>
-          <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Nota / Detalle</label>
-          <input type="text" id="modal-cobro-detalle" placeholder="Ej: Abono en ruta" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm" />
-        </div>
-        <div class="flex gap-2 pt-2">
-          <button type="button" onclick="closeModal('modal-quick-cobro')" class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">Cancelar</button>
-          <button type="submit" class="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow">Confirmar</button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </main>
   </div>
 
-  <!-- 2. Modal Nuevo / Editar Cliente -->
-  <div id="modal-client-form" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-extrabold text-slate-900" id="modal-client-heading">Nuevo Cliente</h3>
-        <button onclick="closeModal('modal-client-form')" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">✕</button>
+  <!-- MODAL NUEVO / EDITAR CLIENTE -->
+  <div id="client-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-panel">
+      <div class="panel-head">
+        <h3 id="client-modal-title">Nuevo Cliente</h3>
+        <button class="btn-icon" onclick="closeModal('client-modal')">✕</button>
       </div>
-      <form onsubmit="submitClientForm(event)" class="space-y-3">
-        <input type="hidden" id="edit-client-id" />
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Barbería *</label>
-            <input type="text" id="edit-client-barberia" required placeholder="Ej: DYNASTY 2" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm uppercase" />
+      <form onsubmit="saveClient(event)" class="styled-form">
+        <input type="hidden" id="edit-cli-id" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Barbería / Local *</label>
+            <input type="text" id="cli-barberia" required />
           </div>
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Barbero *</label>
-            <input type="text" id="edit-client-barbero" required placeholder="Ej: POCHO" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm uppercase" />
+          <div class="form-group">
+            <label>Nombre Barbero *</label>
+            <input type="text" id="cli-barbero" required />
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Zona / Barrio</label>
-            <input type="text" id="edit-client-zona" placeholder="Ej: LINIERS" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm uppercase" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Zona / Barrio</label>
+            <input type="text" id="cli-zona" placeholder="Ej: CELINA, LINIERS, FLORES" />
           </div>
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Día de Ruta</label>
-            <select id="edit-client-ruta" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-semibold bg-white">
+          <div class="form-group">
+            <label>Día de Ruta</label>
+            <select id="cli-ruta">
               <option value="LUNES / VIERNES">LUNES / VIERNES</option>
               <option value="MARTES">MARTES</option>
               <option value="JUEVES">JUEVES</option>
@@ -552,930 +416,69 @@
             </select>
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Teléfono (WhatsApp)</label>
-            <input type="text" id="edit-client-telefono" placeholder="Ej: 1123456789" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>WhatsApp (sin 0 ni 15)</label>
+            <input type="text" id="cli-tel" placeholder="Ej: 1161298430" />
           </div>
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Deuda Inicial ($)</label>
-            <input type="number" id="edit-client-deuda" step="any" value="0" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm font-bold" />
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="cli-cat">
+              <option value="DIAMOND">DIAMOND</option>
+              <option value="ORO">ORO</option>
+              <option value="PLATA">PLATA</option>
+              <option value="COBRE">COBRE</option>
+            </select>
           </div>
         </div>
-        <div>
-          <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Dirección</label>
-          <input type="text" id="edit-client-direccion" placeholder="Calle y altura" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm uppercase" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Dirección</label>
+            <input type="text" id="cli-dir" />
+          </div>
+          <div class="form-group">
+            <label>Deuda Inicial ($)</label>
+            <input type="number" id="cli-deuda" value="0" />
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Notas</label>
-          <input type="text" id="edit-client-notas" placeholder="Observaciones" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm" />
+        <div class="form-group">
+          <label>Notas</label>
+          <input type="text" id="cli-notas" />
         </div>
-        <div class="flex gap-2 pt-2">
-          <button type="button" onclick="closeModal('modal-client-form')" class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">Cancelar</button>
-          <button type="submit" class="flex-1 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-sm">Guardar Cliente</button>
-        </div>
+        <button type="submit" class="btn-primary btn-full">Guardar Cliente</button>
       </form>
     </div>
   </div>
 
-  <!-- 3. Modal Ver Historial de Cliente -->
-  <div id="modal-client-history" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col">
-      <div class="flex items-center justify-between mb-3">
-        <div>
-          <h3 class="text-lg font-extrabold text-slate-900" id="hist-client-title">Historial</h3>
-          <p class="text-xs text-slate-500" id="hist-client-subtitle">Detalle de cuenta corriente</p>
+  <!-- MODAL NUEVO PRODUCTO -->
+  <div id="product-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-panel">
+      <div class="panel-head">
+        <h3>Nuevo Artículo de Stock</h3>
+        <button class="btn-icon" onclick="closeModal('product-modal')">✕</button>
+      </div>
+      <form onsubmit="saveProduct(event)" class="styled-form">
+        <div class="form-group">
+          <label>Nombre del Producto *</label>
+          <input type="text" id="prod-nombre" placeholder="Ej: POMADA ORIGINAL BLACK 100ML" required />
         </div>
-        <button onclick="closeModal('modal-client-history')" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">✕</button>
-      </div>
-      <div id="hist-client-body" class="overflow-y-auto flex-1 space-y-2 pr-1">
-        <!-- Populated by JS -->
-      </div>
-      <div class="pt-4 mt-3 border-t border-slate-100 flex justify-end">
-        <button onclick="closeModal('modal-client-history')" class="px-5 py-2 rounded-xl bg-navy-900 text-white text-sm font-bold">Cerrar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 4. Modal Nuevo Producto -->
-  <div id="modal-new-product" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-extrabold text-slate-900">Agregar Producto al Stock</h3>
-        <button onclick="closeModal('modal-new-product')" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">✕</button>
-      </div>
-      <form onsubmit="submitNewProduct(event)" class="space-y-3">
-        <div>
-          <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Nombre del Producto *</label>
-          <input type="text" id="new-prod-nombre" required placeholder="Ej: POMADA MATE 100G" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm uppercase" />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Stock Inicial *</label>
-            <input type="number" id="new-prod-stock" required value="10" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-bold" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Stock Inicial</label>
+            <input type="number" id="prod-stock" value="10" required />
           </div>
-          <div>
-            <label class="block text-xs font-bold uppercase text-slate-600 mb-1">Precio Venta ($) *</label>
-            <input type="number" id="new-prod-venta" required min="0" step="any" placeholder="6000" class="w-full px-3 py-2.5 rounded-xl border border-slate-300 text-sm font-bold" />
+          <div class="form-group">
+            <label>Precio de Venta ($)</label>
+            <input type="number" id="prod-venta" value="6000" required />
           </div>
         </div>
-        <div class="flex gap-2 pt-2">
-          <button type="button" onclick="closeModal('modal-new-product')" class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">Cancelar</button>
-          <button type="submit" class="flex-1 py-2.5 rounded-xl bg-navy-900 hover:bg-navy-800 text-white font-bold text-sm">Guardar Producto</button>
-        </div>
+        <button type="submit" class="btn-primary btn-full">Agregar al Inventario</button>
       </form>
     </div>
   </div>
 
-  <!-- 5. Modal Confirmar Restauración -->
-  <div id="modal-reset-confirm" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200">
-      <h3 class="text-lg font-extrabold text-slate-900">¿Restaurar datos originales?</h3>
-      <p class="text-sm text-slate-600 mt-2">Esto volverá a cargar la planilla inicial de Rapibarbe y borrará los cambios guardados en este navegador. Asegurate de descargar un respaldo JSON antes si cargaste movimientos nuevos.</p>
-      <div class="flex gap-2 mt-5">
-        <button onclick="closeModal('modal-reset-confirm')" class="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">Cancelar</button>
-        <button onclick="confirmResetData()" class="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm">Sí, Restaurar</button>
-      </div>
-    </div>
-  </div>
+  <div id="toast" class="toast"></div>
 
-  <!-- TOAST NOTIFICATION -->
-  <div id="toast" class="fixed bottom-20 md:bottom-6 right-4 left-4 md:left-auto md:w-96 bg-navy-900 text-white px-4 py-3.5 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-3 transform translate-y-24 opacity-0 pointer-events-none transition-all duration-300 z-50">
-    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>
-    <p id="toast-msg" class="text-sm font-semibold">Operación guardada</p>
-  </div>
-
-  <!-- =================================================================== -->
-  <!-- JAVASCRIPT APPLICATION LOGIC & EMBEDDED INITIAL DATASET             -->
-  <!-- =================================================================== -->
-  <script>
-    // 1. EMBEDDED REAL BUSINESS DATASET
-    const INITIAL_DATA = {"clients":[{"id":"CLI-001","barberia":"MATIAS","barbero":"MATIAS","zona":"LINIERS","ruta":"MARTES","direccion":"IBARROLA 7093","telefono":"1161298430","categoria":"DIAMOND","deudaBase":478000.0,"notas":""},{"id":"CLI-002","barberia":"RICHAR","barbero":"RONAL","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1123046096","categoria":"DIAMOND","deudaBase":455000.0,"notas":""},{"id":"CLI-003","barberia":"DYNASTY 2","barbero":"POCHO","zona":"FLORES","ruta":"VIERNES","direccion":"EST FLOREZ","telefono":"1124888223","categoria":"DIAMOND","deudaBase":430000.0,"notas":""},{"id":"CLI-004","barberia":"RICHAR","barbero":"RICHAR","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1150956695","categoria":"DIAMOND","deudaBase":399000.0,"notas":"ESPEJO LUCES"},{"id":"CLI-005","barberia":"LILI","barbero":"WUILLI","zona":"CHACARITA","ruta":"MARTES","direccion":"CHACARITA","telefono":"1165485441","categoria":"PLATA","deudaBase":380000.0,"notas":""},{"id":"CLI-006","barberia":"KIKE","barbero":"BRIAYAN","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"1171579607","categoria":"PLATA","deudaBase":380000.0,"notas":""},{"id":"CLI-007","barberia":"YEREMEY","barbero":"YEREMEY","zona":"FLORES","ruta":"VIERNES","direccion":"LOIRA","telefono":"1127981683","categoria":"DIAMOND","deudaBase":360000.0,"notas":""},{"id":"CLI-008","barberia":"DILAN","barbero":"DILAN","zona":"VIRREYES","ruta":"JUEVES","direccion":"VIRREYES","telefono":"","categoria":"PLATA","deudaBase":250000.0,"notas":""},{"id":"CLI-009","barberia":"ALEJANDRO","barbero":"OCTI","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"1127092815","categoria":"PLATA","deudaBase":209000.0,"notas":""},{"id":"CLI-010","barberia":"ALEJANDRO","barbero":"JOSE","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"93813444418","categoria":"PLATA","deudaBase":195000.0,"notas":""},{"id":"CLI-011","barberia":"GALERIA LAS VIAS","barbero":"MARCELA","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"1121626964","categoria":"PLATA","deudaBase":182000.0,"notas":""},{"id":"CLI-012","barberia":"MARCELO","barbero":"TOMAS","zona":"VIRREYES","ruta":"JUEVES","direccion":"AV VIRREYES","telefono":"1163689433","categoria":"DIAMOND","deudaBase":165000.0,"notas":""},{"id":"CLI-013","barberia":"COFRADA","barbero":"SANTINO","zona":"JONTE","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"","categoria":"PLATA","deudaBase":180000.0,"notas":""},{"id":"CLI-014","barberia":"TIZIANO","barbero":"LOIRA","zona":"LOIRA","ruta":"A DEFINIR","direccion":"","telefono":"1138460392","categoria":"PLATA","deudaBase":158000.0,"notas":"158000"},{"id":"CLI-015","barberia":"GOLLO","barbero":"CARLOS","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1158748157","categoria":"PLATA","deudaBase":140000.0,"notas":""},{"id":"CLI-016","barberia":"SAVED BAR.","barbero":"LUCAS","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1123583789","categoria":"DIAMOND","deudaBase":130000.0,"notas":""},{"id":"CLI-017","barberia":"TREN","barbero":"NICOLAS","zona":"FEDERICO LA CROS","ruta":"MARTES","direccion":"FEDERICO LA CROS","telefono":"93772692630","categoria":"PLATA","deudaBase":120000.0,"notas":""},{"id":"CLI-018","barberia":"BARBERIA ESPAÑA","barbero":"MATI","zona":"PIÑERO","ruta":"JUEVES","direccion":"PIÑERO","telefono":"1135600316","categoria":"PLATA","deudaBase":200000.0,"notas":""},{"id":"CLI-019","barberia":"COFRADA","barbero":"ROMAN","zona":"FLORESTA","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1151327104","categoria":"DIAMOND","deudaBase":110000.0,"notas":"VENDER"},{"id":"CLI-020","barberia":"DYNASTY 2","barbero":"YEREMI","zona":"FLORES","ruta":"VIERNES","direccion":"FLORES","telefono":"1126915637","categoria":"PLATA","deudaBase":90000.0,"notas":""},{"id":"CLI-021","barberia":"LILI","barbero":"WUILI PURE","zona":"CHACARITA","ruta":"MARTES","direccion":"CHACARITA","telefono":"1136083479","categoria":"PLATA","deudaBase":89000.0,"notas":"GUANTES Y GEL"},{"id":"CLI-022","barberia":"PUNATA","barbero":"JHONY","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1167877741","categoria":"PLATA","deudaBase":75000.0,"notas":""},{"id":"CLI-023","barberia":"ARMANDO","barbero":"ALEX LENTES","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1162859986","categoria":"PLATA","deudaBase":73000.0,"notas":""},{"id":"CLI-024","barberia":"GOLLO","barbero":"LUIS CHAYAN","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1124943517","categoria":"DIAMOND","deudaBase":70000.0,"notas":""},{"id":"CLI-025","barberia":"CHAMO","barbero":"CHAMO","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1137936448","categoria":"DIAMOND","deudaBase":70000.0,"notas":""},{"id":"CLI-026","barberia":"DIEGO","barbero":"LENIN","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA ACONCAGUA","telefono":"1128772729","categoria":"PLATA","deudaBase":62000.0,"notas":""},{"id":"CLI-027","barberia":"ARMANDO","barbero":"NELSON","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1126933939","categoria":"PLATA","deudaBase":60000.0,"notas":""},{"id":"CLI-028","barberia":"NEIMAR","barbero":"NEIMAR","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1138881817","categoria":"PLATA","deudaBase":60000.0,"notas":""},{"id":"CLI-029","barberia":"NEIMAR","barbero":"JHONY","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1150000477","categoria":"PLATA","deudaBase":60000.0,"notas":""},{"id":"CLI-030","barberia":"MARCELO","barbero":"NAHUEL","zona":"VIRREYES","ruta":"JUEVES","direccion":"VIRREYES","telefono":"1140914108","categoria":"PLATA","deudaBase":55000.0,"notas":""},{"id":"CLI-031","barberia":"YONAIBER","barbero":"YONAIBER","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"1133859906","categoria":"PLATA","deudaBase":42000.0,"notas":""},{"id":"CLI-032","barberia":"LIAN","barbero":"LIAN","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 1","telefono":"1140443066","categoria":"DIAMOND","deudaBase":70000.0,"notas":""},{"id":"CLI-033","barberia":"JOSE MIGUEL","barbero":"GABRIEL","zona":"FLORES","ruta":"VIERNES","direccion":"INDEPENDENCIA","telefono":"1150504592","categoria":"DIAMOND","deudaBase":40000.0,"notas":""},{"id":"CLI-034","barberia":"PERON","barbero":"DAVID","zona":"CHACABUCO","ruta":"A DEFINIR","direccion":"MIRAFLOREZ 2393","telefono":"1123888713","categoria":"DIAMOND","deudaBase":37000.0,"notas":""},{"id":"CLI-035","barberia":"ALEJANDRO","barbero":"TOÑO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"93518087617","categoria":"PLATA","deudaBase":30000.0,"notas":""},{"id":"CLI-036","barberia":"GOLLO","barbero":"GOLLO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1138784056","categoria":"DIAMOND","deudaBase":30000.0,"notas":""},{"id":"CLI-037","barberia":"GOLLO","barbero":"JESUS","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1168846320","categoria":"DIAMOND","deudaBase":30000.0,"notas":""},{"id":"CLI-038","barberia":"YEREMEY","barbero":"CRISTIAN","zona":"FLORES","ruta":"VIERNES","direccion":"LOIRA","telefono":"1134190553","categoria":"DIAMOND","deudaBase":30000.0,"notas":""},{"id":"CLI-039","barberia":"PELUQUERIA ALMENDRA","barbero":"MARI","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"","categoria":"PLATA","deudaBase":30000.0,"notas":"DEJE 2 CAPAS Y ME ENCARGO 2 CAPAS MAS SON EVEREST"},{"id":"CLI-040","barberia":"LA CABRA","barbero":"JHONATHAN","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1138570346","categoria":"DIAMOND","deudaBase":27000.0,"notas":""},{"id":"CLI-041","barberia":"RIKI","barbero":"RIKY","zona":"LINIERS","ruta":"MARTES","direccion":"EST TREN LINIER","telefono":"1150494160","categoria":"DIAMOND","deudaBase":25000.0,"notas":""},{"id":"CLI-042","barberia":"ENCO","barbero":"ENCO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1153197616","categoria":"DIAMOND","deudaBase":24000.0,"notas":""},{"id":"CLI-043","barberia":"PUNATA","barbero":"PEDRO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1160357090","categoria":"PLATA","deudaBase":17000.0,"notas":""},{"id":"CLI-044","barberia":"ARMANDO","barbero":"ARMANDO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1178403756","categoria":"PLATA","deudaBase":5000.0,"notas":""},{"id":"CLI-045","barberia":"COFRADA","barbero":"SEBASTIAN","zona":"","ruta":"A DEFINIR","direccion":"","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-046","barberia":"JUAN VIRREYES","barbero":"JUAN","zona":"","ruta":"A DEFINIR","direccion":"AV. AVELLANEDA","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-047","barberia":"GOLLO","barbero":"DANI","zona":"ACONCAGUA","ruta":"A DEFINIR","direccion":"ACONCAGUA","telefono":"11671038807","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-048","barberia":"SEBASTIAN","barbero":"SEBASTIAN","zona":"ACOYTE","ruta":"VIERNES","direccion":"VIEL 374","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-049","barberia":"LEO","barbero":"LEO","zona":"ALSINA","ruta":"VIERNES","direccion":"TG J.D. PERON 2195","telefono":"1132772157","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-050","barberia":"LEO","barbero":"FABIAN","zona":"ALSINA","ruta":"VIERNES","direccion":"RIVADAVIA 2112","telefono":"1121731780","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-051","barberia":"LEO","barbero":"NICO","zona":"ALSINA","ruta":"VIERNES","direccion":"RIVADAVIA 2112","telefono":"1127987300","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-052","barberia":"LEO","barbero":"JULIOG GODOY","zona":"ALSINA","ruta":"VIERNES","direccion":"RIVADAVIA 2112","telefono":"1136041211","categoria":"COBRE","deudaBase":0.0,"notas":""},{"id":"CLI-053","barberia":"LEO","barbero":"TOVIAS","zona":"ALSINA","ruta":"VIERNES","direccion":"RIVADAVIA 2112","telefono":"1138433154","categoria":"PLATA","deudaBase":0.0,"notas":"155000 | 180000"},{"id":"CLI-054","barberia":"LEO","barbero":"LAUTARO","zona":"ALSINA","ruta":"VIERNES","direccion":"ALSINA","telefono":"1125399957","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-055","barberia":"LEO","barbero":"JHOEL","zona":"ALSINA","ruta":"VIERNES","direccion":"ALSINA","telefono":"1123269387","categoria":"PLATA","deudaBase":0.0,"notas":"REPUESTO DE SHAVER"},{"id":"CLI-056","barberia":"MAURO","barbero":"MAURO","zona":"AVELLANEDA","ruta":"JUEVES","direccion":"AVELLANEDA MITRE 2915","telefono":"1166642715","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-057","barberia":"VERONA","barbero":"ALEJO","zona":"CABALLITO","ruta":"VIERNES","direccion":"PLAZA IRLANDA","telefono":"1127899962","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-058","barberia":"ALEJANDRO","barbero":"CHCHI","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 1 Y 7","telefono":"1133224637","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-059","barberia":"ALEJANDRO","barbero":"JUAN DIA","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 1 Y 7","telefono":"1136623187","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-060","barberia":"ALEJANDRO","barbero":"ALEJANDRO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 1 Y 7","telefono":"1155886521","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-061","barberia":"ALEJANDRO","barbero":"CHICHI","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"1133224637","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-062","barberia":"ALEJANDRO","barbero":"JUAN DIAZ","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"1136623187","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-063","barberia":"ALEJANDRO","barbero":"SEBASTIAN","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA CALL 1","telefono":"1172709244","categoria":"PLATA","deudaBase":40000.0,"notas":""},{"id":"CLI-064","barberia":"ALMEDRA FELIPE","barbero":"LUIS","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1172375084","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-065","barberia":"CHINGADA","barbero":"CARLOS","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 2","telefono":"1127388385","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-066","barberia":"DEMIAN","barbero":"FACUNDO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ENTRADA OLAVARRIA","telefono":"1159730226","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-067","barberia":"ENCO","barbero":"LUIZAO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1165560279","categoria":"DIAMOND","deudaBase":25000.0,"notas":""},{"id":"CLI-068","barberia":"ENCO","barbero":"EFRAIN","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1139391081","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-069","barberia":"ENMANUEL","barbero":"ENMANUEL","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ROTONDA","telefono":"1151613432","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-070","barberia":"GOLLO","barbero":"JHONY","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1150000417","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-071","barberia":"GOLLO","barbero":"ALEXI","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1144721760","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-072","barberia":"GOLLO","barbero":"MARCOS","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"BARRIO PRIVADO","telefono":"1136356436","categoria":"DIAMOND","deudaBase":0.0,"notas":"TRAER CUCHILLA BABY LISS"},{"id":"CLI-073","barberia":"MAGISTRAL","barbero":"MAGALI","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 1 OLAVARRIA","telefono":"1128381688","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-074","barberia":"MAGISTRAL","barbero":"ISAIAS","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CALLE 1 OLAVARRIA","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-075","barberia":"MAGISTRAL","barbero":"CHINO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"1122450007","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-076","barberia":"MAGISTRAL","barbero":"MIGUEL","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA","telefono":"1161183615","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-077","barberia":"MAGISTRAL","barbero":"MAGALY","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA CALLE 1","telefono":"1128381688","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-078","barberia":"PUNATA","barbero":"ABRHAN CHAVO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1123472839","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-079","barberia":"PUNATA","barbero":"ABRAAN MAMANI","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1151210770","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-080","barberia":"PUNATHA","barbero":"JHONY","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1167877741","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-081","barberia":"RICHAR","barbero":"SERJIO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1144010789","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-082","barberia":"RICHAR","barbero":"DIEGO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"ACONCAGUA","telefono":"1128772729","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-083","barberia":"RICHAR","barbero":"LISSET","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA ACONCAGUA","telefono":"1140767406","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-084","barberia":"RICHAR","barbero":"SERGIO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA ACONCAGUA","telefono":"1144010789","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-085","barberia":"SANDRO KIOSKO","barbero":"KIOSKO","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA CALLE1","telefono":"1151442139","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-086","barberia":"SUCRE","barbero":"ISAAC","zona":"CELINA","ruta":"LUNES / VIERNES","direccion":"CELINA OLAVA","telefono":"1153197986","categoria":"PLATA","deudaBase":0.0,"notas":"ENTREGAR CUCHILLA"},{"id":"CLI-087","barberia":"CRISTIAN","barbero":"CRISTIAN","zona":"CHACARITA","ruta":"MARTES","direccion":"FEDERICO LACROZE","telefono":"1133938501","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-088","barberia":"WUIL PURE","barbero":"LILI","zona":"CHACARITA","ruta":"MARTES","direccion":"FEDERICO LACROZE","telefono":"1136083479","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-089","barberia":"WUILL","barbero":"LILI","zona":"CHACARITA","ruta":"MARTES","direccion":"FEDERICO LACROZE","telefono":"1165485441","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-090","barberia":"CATIRE","barbero":"BRYAN","zona":"FLORES","ruta":"VIERNES","direccion":"PLAZA FLORES","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-091","barberia":"CATIRE","barbero":"CATIRE","zona":"FLORES","ruta":"VIERNES","direccion":"PLAZA FLORES","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-092","barberia":"CATIRE","barbero":"KENDER","zona":"FLORES","ruta":"VIERNES","direccion":"PLAZA FLORES","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-093","barberia":"DYNASTY 1","barbero":"DANIEL","zona":"FLORES","ruta":"VIERNES","direccion":"EST CARABOBO","telefono":"1138984714","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-094","barberia":"DYNASTY 1","barbero":"YILBER","zona":"FLORES","ruta":"VIERNES","direccion":"EST CARABOBO","telefono":"93872221046","categoria":"ORO","deudaBase":0.0,"notas":""},{"id":"CLI-095","barberia":"DYNASTY 2","barbero":"WUILL","zona":"FLORES","ruta":"VIERNES","direccion":"EST FLOREZ","telefono":"1157711113","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-096","barberia":"JOSE MIGUEL","barbero":"JOSE MIGUEL","zona":"FLORES","ruta":"VIERNES","direccion":"INDEPENDENCIA","telefono":"1132054956","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-097","barberia":"YEREMY","barbero":"YERAL","zona":"FLORES","ruta":"VIERNES","direccion":"LOIRA","telefono":"1124843982","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-098","barberia":"COFRADA","barbero":"FERNANDO","zona":"FLORESTA","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1166242020","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-099","barberia":"COFRADA","barbero":"BRYAYAN","zona":"FLORESTA","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1122434871","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-100","barberia":"COFRADA","barbero":"SANTIAGO","zona":"FLORESTA","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1169438052","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-101","barberia":"COFRADA","barbero":"ALEX","zona":"FLORESTA","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1176015132","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-102","barberia":"DI CESARE","barbero":"EMILIO","zona":"FLORESTA","ruta":"VIERNES","direccion":"LOPEZ DE VEGA 2396","telefono":"11755724896","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-103","barberia":"DI CESARE","barbero":"JUAN","zona":"FLORESTA","ruta":"VIERNES","direccion":"LOPEZ DE VEGA 2396","telefono":"1167073310","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-104","barberia":"JAVA","barbero":"ROY KIKE","zona":"FLORESTA","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1128884921","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-105","barberia":"COFRADA","barbero":"BAUTISTA","zona":"JONTE","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1131580062","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-106","barberia":"COFRADA","barbero":"ADRIAN","zona":"JONTE","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"1169628163","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-107","barberia":"LIDIA","barbero":"LIDIA","zona":"JONTE","ruta":"VIERNES","direccion":"ALVARES JONTE","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-108","barberia":"BARBERIA MARISA","barbero":"JAIRO JOEL","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"93886650020","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-109","barberia":"BARBERIA VILMA","barbero":"VILMA","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"1128742638","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-110","barberia":"CARLOS","barbero":"CARLOS","zona":"LINIERS","ruta":"MARTES","direccion":"FRANCISCO DE VIETMA 6905","telefono":"1125786961","categoria":"DIAMOND","deudaBase":0.0,"notas":"BUSCAR FOTO"},{"id":"CLI-111","barberia":"CARLOS","barbero":"YONAIKER","zona":"LINIERS","ruta":"MARTES","direccion":"FRANCISCO DE VIETMA 6905","telefono":"1133859906","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-112","barberia":"CARLOS","barbero":"GONZALO","zona":"LINIERS","ruta":"MARTES","direccion":"FRANCISCO DE VIETMA 6905","telefono":"1126621180","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-113","barberia":"FABIOLA","barbero":"ROKI","zona":"LINIERS","ruta":"MARTES","direccion":"EST TREN LINIER","telefono":"1139104691","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-114","barberia":"PATRICIA","barbero":"FREDDY","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-115","barberia":"RIKI","barbero":"GONZALO","zona":"LINIERS","ruta":"MARTES","direccion":"EST TREN LINIER","telefono":"1144002506","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-116","barberia":"ROKI","barbero":"FABIOLA","zona":"LINIERS","ruta":"MARTES","direccion":"LINIER","telefono":"1139104691","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-117","barberia":"YEREMEY DOMINICANO","barbero":"WUILIAN","zona":"LOIRA","ruta":"A DEFINIR","direccion":"LOIRA","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-118","barberia":"LOPEZ DE VEGA","barbero":"JUAN VALCASA","zona":"LOPE DE VEGA","ruta":"A DEFINIR","direccion":"LOPE DE VEGA","telefono":"1167073310","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-119","barberia":"ALMENDRA","barbero":"FELIPE","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1172071429","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-120","barberia":"GOLLO","barbero":"MATIAS","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1124077739","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-121","barberia":"LARRI","barbero":"LARRI","zona":"OLAVARRIA","ruta":"LUNES / VIERNES","direccion":"OLAVARRIA","telefono":"1139415963","categoria":"PLATA","deudaBase":0.0,"notas":"2299"},{"id":"CLI-122","barberia":"CHAMO","barbero":"CARLLOS","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1137936448","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-123","barberia":"DEICY","barbero":"RENSO","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1150574502","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-124","barberia":"DEICY","barbero":"NORA","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1123317044","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-125","barberia":"DEICY","barbero":"PETTY","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1125944247","categoria":"COBRE","deudaBase":0.0,"notas":""},{"id":"CLI-126","barberia":"DEICY","barbero":"DEISY","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1159280371","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-127","barberia":"JOSE","barbero":"JOSE","zona":"POMPEYA","ruta":"VIERNES","direccion":"PUENTE POMPEYA","telefono":"1144018303","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-128","barberia":"LUZ","barbero":"LUZ","zona":"POMPEYA","ruta":"VIERNES","direccion":"PLAZA POMPEYA","telefono":"1167806221","categoria":"COBRE","deudaBase":0.0,"notas":""},{"id":"CLI-129","barberia":"BARBERIA MAERCELO","barbero":"AXEL","zona":"VIRREYES","ruta":"JUEVES","direccion":"VIRREYES","telefono":"1161271853","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-130","barberia":"COÑA","barbero":"EXEQUIEL","zona":"VIRREYES","ruta":"JUEVES","direccion":"VIRREYES","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-131","barberia":"JUAN","barbero":"LAUTARO JUAN","zona":"VIRREYES","ruta":"JUEVES","direccion":"AV VIRREYES","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-132","barberia":"MARCELO","barbero":"ROY","zona":"VIRREYES","ruta":"JUEVES","direccion":"AV VIRREYES","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-133","barberia":"MARCELO","barbero":"MARCELO","zona":"VIRREYES","ruta":"JUEVES","direccion":"AV VIRREYES","telefono":"","categoria":"DIAMOND","deudaBase":0.0,"notas":""},{"id":"CLI-134","barberia":"VENEZOLANO","barbero":"RAMIRO","zona":"WILDE","ruta":"JUEVES","direccion":"WUILDE","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-135","barberia":"VENEZOLANO","barbero":"RAULO","zona":"WILDE","ruta":"JUEVES","direccion":"WUILDE","telefono":"","categoria":"PLATA","deudaBase":0.0,"notas":""},{"id":"CLI-136","barberia":"VERONA","barbero":"MANUEL","zona":"CABALLITO","ruta":"VIERNES","direccion":"PLAZA IRLANDA","telefono":"1123869422","categoria":"DIAMOND","deudaBase":20000.0,"notas":""}],"movs":[{"id":"MOV-001","fecha":"2026-11-01","barberia":"COFRADA","barbero":"SANTINO","tipo":"ABONO / PAGO","detalle":"Abono registrado en hoja Noviembre","medio":"EFECTIVO","monto":20000.0,"obs":"Migrado de hoja Deudores"},{"id":"MOV-002","fecha":"2026-11-01","barberia":"BARBERIA ESPAÑA","barbero":"MATI","tipo":"ABONO / PAGO","detalle":"Abono registrado en hoja Noviembre","medio":"EFECTIVO","monto":80000.0,"obs":"Migrado de hoja Deudores"},{"id":"MOV-003","fecha":"2026-11-01","barberia":"LIAN","barbero":"LIAN","tipo":"ABONO / PAGO","detalle":"Abono registrado en hoja Noviembre","medio":"EFECTIVO","monto":30000.0,"obs":"Migrado de hoja Deudores"},{"id":"MOV-004","fecha":"2026-11-01","barberia":"ALEJANDRO","barbero":"SEBASTIAN","tipo":"ABONO / PAGO","detalle":"Abono registrado en hoja Noviembre","medio":"EFECTIVO","monto":40000.0,"obs":"Migrado de hoja Deudores"},{"id":"MOV-005","fecha":"2026-11-01","barberia":"ENCO","barbero":"LUIZAO","tipo":"ABONO / PAGO","detalle":"Abono registrado en hoja Noviembre","medio":"EFECTIVO","monto":25000.0,"obs":"Migrado de hoja Deudores"},{"id":"MOV-006","fecha":"2026-11-01","barberia":"VERONA","barbero":"MANUEL","tipo":"ABONO / PAGO","detalle":"Abono registrado en hoja Noviembre","medio":"EFECTIVO","monto":50000.0,"obs":"Migrado de hoja Deudores"},{"id":"MOV-007","fecha":"2026-10-29","barberia":"MARCELO","barbero":"ELIAS","tipo":"VENTA CONTADO","detalle":"2 repuestos shaver, 3 after shave, 4 capas Eloise","medio":"EFECTIVO","monto":100000.0,"obs":"Venta ruta Virreyes"},{"id":"MOV-008","fecha":"2026-10-29","barberia":"COÑA","barbero":"TOMAS","tipo":"VENTA CONTADO","detalle":"1 Cool Care, 1 Dorco, 3 after shave, 1 esterilizador Wmark","medio":"EFECTIVO","monto":220000.0,"obs":"Venta ruta Virreyes"},{"id":"MOV-009","fecha":"2026-11-04","barberia":"VIRREYES","barbero":"MARISOL","tipo":"VENTA CONTADO","detalle":"3 capas y alfombra","medio":"EFECTIVO","monto":99000.0,"obs":"Miércoles 4 Nov"},{"id":"MOV-010","fecha":"2026-11-04","barberia":"COÑA","barbero":"LAUTARO","tipo":"VENTA CONTADO","detalle":"1 Cool Care y 2 filos Treet","medio":"EFECTIVO","monto":65000.0,"obs":"Miércoles 4 Nov"}],"inv":[{"codigo":"ART-001","producto":"GEL DE AFEITAR ORIGINAL BLACK 750ML","stock":0,"costo":0,"venta":12000},{"codigo":"ART-002","producto":"GOMA CHICA PARA PATILLERA","stock":40,"costo":0,"venta":2000},{"codigo":"ART-003","producto":"GOMA GRANDE PARA SHAVER","stock":26,"costo":0,"venta":4000},{"codigo":"ART-004","producto":"GOMA MEDIA PARA MÁQUINA DE CORTE","stock":20,"costo":0,"venta":3000},{"codigo":"ART-005","producto":"GORRO DE MECHAS DOMPEL","stock":2,"costo":0,"venta":9000},{"codigo":"ART-006","producto":"INTERRUPTOR DE MÁQUINA NEGRO - BEIGE","stock":15,"costo":0,"venta":6000},{"codigo":"ART-007","producto":"PATILLERA KEMEI 2299 SIN BASE DE CARGA","stock":2,"costo":0,"venta":30000},{"codigo":"ART-008","producto":"KEMEI 2299 CON BASE DE CARGA","stock":0,"costo":0,"venta":45000},{"codigo":"ART-009","producto":"KIT 8 ALZAS DE COLORES","stock":0,"costo":0,"venta":12000},{"codigo":"ART-010","producto":"MAQUINA AFEITADORA HOMBRE VGR V334","stock":0,"costo":0,"venta":220000},{"codigo":"ART-011","producto":"MAQUINA CORTA PELO VGR V-880  CERÁMICA A MOTOR BLANCA","stock":0,"costo":0,"venta":160000},{"codigo":"ART-012","producto":"MAQUINA CORTADORA DE PELO VGR PRO 885","stock":0,"costo":0,"venta":180000},{"codigo":"ART-013","producto":"MAQUINA CORTAPELO VGR V-001 AZUL","stock":0,"costo":0,"venta":220000},{"codigo":"ART-014","producto":"MAQUINA DE CORTE CLIPPER PROFESIONAL VGR V- 888","stock":0,"costo":0,"venta":180000},{"codigo":"ART-015","producto":"MASAJEADOR BARBER PRO","stock":1,"costo":0,"venta":180000},{"codigo":"ART-016","producto":"NAVAJA AZUL EVEREST","stock":0,"costo":0,"venta":6000},{"codigo":"ART-017","producto":"NAVAJA BARATA NEGRA","stock":7,"costo":0,"venta":2000},{"codigo":"ART-018","producto":"NAVAJA BARBER PRO TRICOLOR","stock":10,"costo":0,"venta":6000},{"codigo":"ART-019","producto":"NAVAJA DE METAL","stock":2,"costo":0,"venta":6000},{"codigo":"ART-020","producto":"NAVAJA MILITAR BARBER PRO","stock":0,"costo":0,"venta":6000},{"codigo":"ART-021","producto":"NAVAJA MOSKU","stock":0,"costo":0,"venta":6000},{"codigo":"ART-022","producto":"PAR DE OREJERAS","stock":4,"costo":0,"venta":500},{"codigo":"ART-023","producto":"PACK DE 5 ROLLOS PAPEL DE PARA CUELLO","stock":4,"costo":0,"venta":10000},{"codigo":"ART-024","producto":"PALANCA DE MAQUINA DE CORTE","stock":3,"costo":0,"venta":5000},{"codigo":"ART-025","producto":"PAR DE GUANTES NEGROS","stock":9,"costo":0,"venta":150},{"codigo":"ART-026","producto":"PAR GANCHOS NEGROS ZATYS","stock":4,"costo":0,"venta":5000},{"codigo":"ART-027","producto":"PEINE BLANCO ANDIS","stock":0,"costo":0,"venta":5000},{"codigo":"ART-028","producto":"PEINE BROCHA","stock":5,"costo":0,"venta":2000},{"codigo":"ART-029","producto":"PEINE DEGRADO GRIS","stock":13,"costo":0,"venta":5000},{"codigo":"ART-030","producto":"PEINE DORADO","stock":0,"costo":0,"venta":6000},{"codigo":"ART-031","producto":"PEINE MANGO NEGRO","stock":0,"costo":0,"venta":1000},{"codigo":"ART-032","producto":"PEINE METAL ROSADO","stock":0,"costo":0,"venta":6000},{"codigo":"ART-033","producto":"PEINE NAVAJA","stock":2,"costo":0,"venta":1000},{"codigo":"ART-034","producto":"PEINE TEXTURIZADOR","stock":0,"costo":0,"venta":5000},{"codigo":"ART-035","producto":"PEINE METAL","stock":0,"costo":0,"venta":6000},{"codigo":"ART-036","producto":"PEINES NEGROS","stock":39,"costo":0,"venta":1000},{"codigo":"ART-037","producto":"POLO BLACK CON BACHA","stock":0,"costo":0,"venta":180000},{"codigo":"ART-038","producto":"POLO LED DE BARBERIA - CHICO","stock":0,"costo":0,"venta":100000},{"codigo":"ART-039","producto":"POLO LED DE BARBERIA - GRANDE","stock":0,"costo":0,"venta":160000},{"codigo":"ART-040","producto":"POLO LED DE BARBERIA - MEDIANO","stock":3,"costo":0,"venta":130000},{"codigo":"ART-041","producto":"POLVO TEXTURIZADOS ORIGINAL BLACK","stock":5,"costo":0,"venta":6000},{"codigo":"ART-042","producto":"POMADA ORIGINAL BLACK 50ML","stock":1,"costo":0,"venta":6000},{"codigo":"ART-043","producto":"PORTA ROLLO DE PAPEL PARA CUELLO","stock":6,"costo":0,"venta":8000},{"codigo":"ART-044","producto":"PORTA TIJERAS","stock":0,"costo":0,"venta":20000},{"codigo":"ART-045","producto":"PORTA TIJERAS CALAVERA","stock":1,"costo":0,"venta":10000},{"codigo":"ART-046","producto":"PROTECTOR DE ZAPATOS","stock":36,"costo":0,"venta":3000},{"codigo":"ART-047","producto":"PINCEL /BROCHA","stock":4,"costo":0,"venta":1000},{"codigo":"ART-050","producto":"QUITAPELOS DE LUJO NEGRO","stock":12,"costo":0,"venta":6000},{"codigo":"ART-051","producto":"QUITAPELO DE LUJO TRICOLOR","stock":9,"costo":0,"venta":8000},{"codigo":"ART-052","producto":"QUITAPELOS DE MADERA","stock":3,"costo":0,"venta":6000},{"codigo":"ART-053","producto":"REPUESTO CABEZAL SHAVER EVEREST","stock":5,"costo":0,"venta":18000},{"codigo":"ART-054","producto":"REPUESTO CABEZAL SHAVER KEMEI","stock":1,"costo":0,"venta":15000},{"codigo":"ART-055","producto":"REPUESTO CUCHILLA 5 STAR: BALDING CLIPPER","stock":1,"costo":0,"venta":20000},{"codigo":"ART-056","producto":"REPUESTO CUCHILLA BABY LISS FX707BD2","stock":1,"costo":0,"venta":90000},{"codigo":"ART-057","producto":"REPUESTO CUCHILLA BABY LISS FX707G2","stock":3,"costo":0,"venta":90000},{"codigo":"ART-058","producto":"REPUESTO CUCHILLA EVEREST","stock":0,"costo":0,"venta":20000},{"codigo":"ART-059","producto":"REPUESTO CUCHILLA EVEREST T-317","stock":0,"costo":0,"venta":20000},{"codigo":"ART-060","producto":"REPUESTO CUCHILLA SENIOR","stock":0,"costo":0,"venta":45000},{"codigo":"ART-061","producto":"REPUESTO CUCHILLA SUPER TAPER WAHL","stock":2,"costo":0,"venta":30000},{"codigo":"ART-062","producto":"REPUESTO CUCHILLA WMARK T-317","stock":1,"costo":0,"venta":15000},{"codigo":"ART-063","producto":"REPUESTO CUCHILLA WMARK W-133","stock":0,"costo":0,"venta":15000},{"codigo":"ART-064","producto":"REPUESTO DE CUCHILLA CLIPPER EVEREST","stock":0,"costo":0,"venta":20000},{"codigo":"ART-065","producto":"REPUESTO DE PORTA CUCHILLA NEGRO","stock":12,"costo":0,"venta":20000},{"codigo":"ART-066","producto":"RESORTE","stock":10,"costo":0,"venta":4000},{"codigo":"ART-067","producto":"ROCIADOR BARBERSHOP","stock":30,"costo":0,"venta":3000},{"codigo":"ART-068","producto":"ROCIADOR EVEREST ELÉCTRICO","stock":5,"costo":0,"venta":70000},{"codigo":"ART-069","producto":"ROCIADOR EVEREST MANUAL","stock":0,"costo":0,"venta":13000},{"codigo":"ART-070","producto":"SECADOR DE PELO PROFESIONAL VGR V-441METAL PLASMA 11000 RPM DORADO","stock":0,"costo":0,"venta":90000},{"codigo":"ART-071","producto":"SECADORDE PELO PROFESIONAL VGR V-401 11000 RPM FRIO CALOR NEGRO","stock":0,"costo":0,"venta":210000},{"codigo":"ART-072","producto":"SET DE 10 PEINES","stock":6,"costo":0,"venta":6000},{"codigo":"ART-073","producto":"SHAVER ANDIS","stock":1,"costo":0,"venta":190000},{"codigo":"ART-074","producto":"SUJETADORES TRU BARBER","stock":4,"costo":0,"venta":2000},{"codigo":"ART-075","producto":"TACHO CHICO","stock":2,"costo":0,"venta":6000},{"codigo":"ART-076","producto":"TACHO FILOS GRANDE","stock":4,"costo":0,"venta":6000},{"codigo":"ART-077","producto":"TARJETA DE MÁQUINA","stock":4,"costo":0,"venta":20000},{"codigo":"ART-078","producto":"TIJERA TINA DRAGON JAPONESAS","stock":4,"costo":0,"venta":39000},{"codigo":"ART-079","producto":"TIJERA DE CORTE TORNILLO AZUL","stock":5,"costo":0,"venta":5000},{"codigo":"ART-080","producto":"TIJERA DE PULIR ENTRE SACAR TORNILLO AZUL","stock":9,"costo":0,"venta":5000},{"codigo":"ART-081","producto":"TIJERA DE PULIR PAKISTANÍ","stock":1,"costo":0,"venta":39000},{"codigo":"ART-082","producto":"TIJERAS DE CORTE PAKISTANÍ","stock":5,"costo":0,"venta":39000},{"codigo":"ART-083","producto":"TIJERA EVEREST SURDO CHICA ROYAL","stock":1,"costo":0,"venta":39000},{"codigo":"ART-084","producto":"TIJERAS DE CORTE EVEREST 6","stock":5,"costo":0,"venta":39000},{"codigo":"ART-085","producto":"TIJERAS DE CORTE DE 6 PULGADAS Y MEDIA","stock":4,"costo":0,"venta":39000},{"codigo":"ART-086","producto":"TIJERAS EVEREST PULIR","stock":4,"costo":0,"venta":39000},{"codigo":"ART-088","producto":"TRIO DE ALZAS - VERDE, MORADO Y ROJA","stock":15,"costo":0,"venta":6000},{"codigo":"ART-089","producto":"TRIO DE ALZAS - NEGRAS Y METAL","stock":0,"costo":0,"venta":6000},{"codigo":"ART-090","producto":"DUO DE ALZAS VERDE ROJA","stock":4,"costo":0,"venta":4000},{"codigo":"ART-091","producto":"ALZAS    0,5","stock":0,"costo":0,"venta":6000},{"codigo":"ART-092","producto":"COOL CARE","stock":6,"costo":0,"venta":25000},{"codigo":"ART-093","producto":"AFTER SHAVE","stock":74,"costo":0,"venta":4500},{"codigo":"ART-094","producto":"FILOS DORCO BLISTER DE 200","stock":44,"costo":0,"venta":23000},{"codigo":"ART-095","producto":"ESTUCHE DE TIJERA ECOCUERO","stock":12,"costo":0,"venta":3000},{"codigo":"ART-096","producto":"CUCHILLA AJUSTABLE EVEREST ALZAS","stock":2,"costo":0,"venta":50000},{"codigo":"ART-097","producto":"SPRAY EVEREST 5 EN 1","stock":18,"costo":0,"venta":6000},{"codigo":"ART-098","producto":"ESPEJO","stock":7,"costo":0,"venta":12000},{"codigo":"ART-099","producto":"CEPILLO TINA GRANDE","stock":4,"costo":0,"venta":6000},{"codigo":"ART-100","producto":"CEPILLO DE MADERA","stock":2,"costo":0,"venta":8000},{"codigo":"ART-101","producto":"VGR 369","stock":2,"costo":0,"venta":40000},{"codigo":"ART-102","producto":"VGR 377","stock":3,"costo":0,"venta":130000},{"codigo":"ART-103","producto":"VGR 886","stock":0,"costo":0,"venta":140000},{"codigo":"ART-104","producto":"VGR 035","stock":1,"costo":0,"venta":240000},{"codigo":"ART-105","producto":"CEPILLO TINA CHICOS","stock":24,"costo":0,"venta":3000},{"codigo":"ART-106","producto":"PEINES NEGRO GENERAL","stock":0,"costo":0,"venta":1000},{"codigo":"ART-107","producto":"PEINE METALICO","stock":10,"costo":0,"venta":6000},{"codigo":"ART-108","producto":"MAQUINA DE PELOS DE NARIZ","stock":0,"costo":0,"venta":15000},{"codigo":"ART-109","producto":"GANCHOS DE METAL PACK DE 12","stock":5,"costo":0,"venta":5000},{"codigo":"ART-110","producto":"ALFOMBRA CHICA ANTIDESLIZANTE","stock":2,"costo":0,"venta":12000},{"codigo":"ART-111","producto":"ALFOMBRA ANTIDESLIZANTE TRU BARBER","stock":3,"costo":0,"venta":15000},{"codigo":"ART-112","producto":"ALFOMBRA SUPREME","stock":2,"costo":0,"venta":15000},{"codigo":"ART-113","producto":"ALFOMBRA APOYA TIJERA TRUE BARBER IMAN","stock":10,"costo":0,"venta":50000},{"codigo":"ART-115","producto":"CUCHILLA DE CERAMICA DOS GUECOS","stock":7,"costo":0,"venta":8000},{"codigo":"ART-116","producto":"CAJITA DE ARPA Y CUCHILLAS PARA SHAVER","stock":8,"costo":0,"venta":16000},{"codigo":"ART-117","producto":"ALZA NUMERO 1","stock":6,"costo":0,"venta":5000},{"codigo":"ART-118","producto":"ALZA NUMERO 3","stock":0,"costo":0,"venta":5000},{"codigo":"ART-119","producto":"BROCHA ZATYS DE ROJO Y AZUL","stock":5,"costo":0,"venta":2000},{"codigo":"ART-120","producto":"PALANCA / INTERRUPTOR DE ENCENDIDO Y APAGADO DE MAQUINA","stock":7,"costo":0,"venta":6000},{"codigo":"ART-121","producto":"PROTECTOR DE CABLE","stock":8,"costo":0,"venta":4000},{"codigo":"ART-122","producto":"PALANCA DE CUCHILLA","stock":0,"costo":0,"venta":5000},{"codigo":"ART-123","producto":"PORTA CUCHILLAS METAL","stock":2,"costo":0,"venta":6000},{"codigo":"ART-124","producto":"CABLE CHICO ROJO DE MAQUINA","stock":2,"costo":0,"venta":2000},{"codigo":"ART-125","producto":"CUCHILLA MAGIC CLIP WAHL","stock":3,"costo":0,"venta":30000},{"codigo":"ART-126","producto":"CUCHILLA EVEREST 1792","stock":0,"costo":0,"venta":15000},{"codigo":"ART-127","producto":"CUCHILLA EVEREST DLC","stock":10,"costo":0,"venta":20000},{"codigo":"ART-128","producto":"CUCHILLA WMARK PRO","stock":0,"costo":0,"venta":20000},{"codigo":"ART-129","producto":"CUCHILLA WMARK EN BOLSITA","stock":0,"costo":0,"venta":20000},{"codigo":"ART-130","producto":"CUCHIKKA TRIMMER DLC ACERO INOX","stock":0,"costo":0,"venta":16500},{"codigo":"ART-131","producto":"CUCHILLA VGR 001","stock":1,"costo":0,"venta":35000},{"codigo":"ART-132","producto":"CUCHILLA WMARK CON CUCHILLA DE CERAMICA","stock":0,"costo":0,"venta":20000},{"codigo":"ART-133","producto":"CUCHILLA IMITACION MAGIC CLIP WAHL","stock":1,"costo":0,"venta":10000},{"codigo":"ART-134","producto":"CABEZAL SHAVER VGR 377","stock":1,"costo":0,"venta":30000},{"codigo":"ART-135","producto":"CAPAS ELOISE","stock":18,"costo":0,"venta":15000},{"codigo":"ART-136","producto":"CAPA EVEREST VERDE","stock":3,"costo":0,"venta":15000},{"codigo":"ART-137","producto":"CAPA EVEREST ROSADA","stock":3,"costo":0,"venta":15000},{"codigo":"ART-138","producto":"CAPA EVEREST NEGRA Y ROJA","stock":6,"costo":0,"venta":15000},{"codigo":"ART-139","producto":"CAPA VGR DISEÑO SELECCION ARGENTINA","stock":3,"costo":0,"venta":10000},{"codigo":"ART-140","producto":"CAPA DE LA SELECCION ARGENTINA GENERICA","stock":1,"costo":0,"venta":15000},{"codigo":"ART-141","producto":"CAPA EVEREST DE LA SELECCION ARGENTINA","stock":0,"costo":0,"venta":18000},{"codigo":"ART-142","producto":"CAPA EVEREST NEGRA Y AZUL","stock":7,"costo":0,"venta":15000},{"codigo":"ART-143","producto":"CAPA EVEREST NEGRA VERDE","stock":2,"costo":0,"venta":15000},{"codigo":"ART-144","producto":"GANCHOS COCODRILO PACK DE 6","stock":3,"costo":0,"venta":5000},{"codigo":"ART-145","producto":"CCHIA CERAMICA DETAILER","stock":2,"costo":0,"venta":8000},{"codigo":"ART-146","producto":"CUCHILLA DE CERAMICA CUATRO GUECOS","stock":6,"costo":0,"venta":8000},{"codigo":"ART-147","producto":"JARRA DE VIDRIO SANITISANTE","stock":2,"costo":0,"venta":30000},{"codigo":"ART-148","producto":"PATILLERA KEMEI 2293","stock":-1,"costo":0,"venta":40000},{"codigo":"ART-149","producto":"PINTURA DE AEROGRAFO","stock":4,"costo":0,"venta":5000},{"codigo":"ART-150","producto":"CABEZAL DE SHAVER ANDIS PLUS II","stock":5,"costo":0,"venta":40000},{"codigo":"ART-151","producto":"ESTENCIL AERÓGRAFO","stock":6,"costo":0,"venta":1000},{"codigo":"ART-152","producto":"ACEITE EVEREST","stock":0,"costo":0,"venta":5000},{"codigo":"ART-153","producto":"ACEITE VGR","stock":2,"costo":0,"venta":5000},{"codigo":"ART-154","producto":"RESORTES CIRCULARES OVALADOS","stock":4,"costo":0,"venta":0},{"codigo":"ART-155","producto":"BRAZALETE CON IMAN SUPREME PARA ALZAS","stock":3,"costo":0,"venta":3000},{"codigo":"ART-156","producto":"CAPA NEGRA","stock":7,"costo":0,"venta":6000},{"codigo":"ART-157","producto":"BABY LISS PRO INFLUENCER COLECCIÓN","stock":1,"costo":0,"venta":280000},{"codigo":"ART-158","producto":"CAJITA DE FILOS TREET","stock":67,"costo":0,"venta":2000},{"codigo":"ART-159","producto":"ALZAS DUO NEGRAS Y GRIS","stock":15,"costo":0,"venta":7000},{"codigo":"ART-160","producto":"CEPILLO NEGRO ANDIS","stock":1,"costo":0,"venta":2000},{"codigo":"ART-161","producto":"BOWL DE TINTURA NEGRO","stock":2,"costo":0,"venta":1000},{"codigo":"ART-162","producto":"ESTUCHE DE TIJERA CON CIERRE","stock":2,"costo":0,"venta":2000},{"codigo":"ART-163","producto":"CAPA ZATYS","stock":2,"costo":0,"venta":6000},{"codigo":"ART-164","producto":"CAPA DE TINTE","stock":1,"costo":0,"venta":3000},{"codigo":"ART-165","producto":"ALZA 1/2","stock":1,"costo":0,"venta":3000},{"codigo":"ART-166","producto":"VGR 938","stock":1,"costo":0,"venta":25000},{"codigo":"ART-167","producto":"AERÓGRAFO","stock":1,"costo":0,"venta":50000},{"codigo":"ART-168","producto":"GEL DE AFEITAR ORIGINAL BLACK 250 ML","stock":1,"costo":0,"venta":5000},{"codigo":"ART-169","producto":"TIJERAS PAKISTANI","stock":5,"costo":0,"venta":39000},{"codigo":"ART-172","producto":"EFEITADORA SHAVER VGR V325 NEGRO Y AZUL","stock":2,"costo":22359,"venta":44400},{"codigo":"ART-173","producto":"CABEZAL REPUES AFEITADORA VGR V322 NEGRO","stock":2,"costo":5433,"venta":10900},{"codigo":"ART-174","producto":"CUCHILLA REPUES CORTADORA V015 Y V035 NEGRO","stock":3,"costo":20304,"venta":20400},{"codigo":"ART-175","producto":"AET PEINES ALZAS MAGNETICOS VGR POR 8 VERDE","stock":4,"costo":0,"venta":28774},{"codigo":"ART-176","producto":"CUCHILLA VGR  V001 NEGRA","stock":2,"costo":0,"venta":48500},{"codigo":"ART-177","producto":"MAQUINA CORTE VGR V285  9000 RPM AMARLLO","stock":2,"costo":0,"venta":151800},{"codigo":"ART-178","producto":"MAQUINA CORTADORA VGRV886C LED IVERDE","stock":2,"costo":0,"venta":63650},{"codigo":"ART-179","producto":"SECADOR DE PELO  PROFES VGR V 441 DORADO","stock":5,"costo":0,"venta":93000},{"codigo":"ART-180","producto":"SECADOR DE PELO PROFESIO VGR V445 ROJO","stock":3,"costo":0,"venta":75000},{"codigo":"ART-181","producto":"CORTADORA TRIMMER VGR V977 ROJO","stock":0,"costo":0,"venta":130000},{"codigo":"ART-182","producto":"MAQUINA CORTADORA VGR V880C CERAMICA VERDE","stock":2,"costo":111823,"venta":190000},{"codigo":"ART-183","producto":"MAQUINA PATILLERA VGRE V906 NEGRO Y VERDE","stock":2,"costo":53081,"venta":90000},{"codigo":"ART-184","producto":"REPUESTO PARA VGR V308 Y V640S3","stock":1,"costo":0,"venta":106000},{"codigo":"ART-190","producto":"LOCIÓN BACTERIANA LIQUIDO PARA ESTERILIZADOR","stock":3,"costo":0,"venta":9000}]};
-
-    // 2. STATE MANAGEMENT & LOCALSTORAGE
-    const STORAGE_KEY = 'rapibarbe_db_v1';
-    let appState = {
-      clients: [],
-      movs: [],
-      inv: []
-    };
-
-    let currentTab = 'dashboard';
-    let currentRutaFilter = 'TODOS';
-    let currentCrmFilter = 'TODOS';
-    let currentInvFilter = 'TODOS';
-
-    // Format currency in ARS
-    function formatARS(num) {
-      const val = Number(num) || 0;
-      return '$' + val.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    }
-
-    // Load state from localStorage or fallback to INITIAL_DATA
-    function loadState() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && Array.isArray(parsed.clients) && Array.isArray(parsed.movs) && Array.isArray(parsed.inv)) {
-            appState = parsed;
-            return;
-          }
-        }
-      } catch (e) {
-        console.error('Error leyendo localStorage:', e);
-      }
-      // Deep clone INITIAL_DATA
-      appState = JSON.parse(JSON.stringify(INITIAL_DATA));
-      saveState();
-    }
-
-    function saveState() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
-      } catch (e) {
-        console.error('Error guardando localStorage:', e);
-        showToast('Error al guardar en el navegador');
-      }
-    }
-
-    // 3. CALCULATE LIVE CLIENT BALANCES
-    // Saldo Actual = deudaBase + sum(VENTA FIADA after initial) - sum(ABONO / PAGO after initial)
-    // Note: MOV-001 to MOV-006 were already reflected in deudaBase during Excel migration,
-    // so we mark initial migrated movs with `migrated: true` or exclude MOV-001..MOV-006 from altering deudaBase again.
-    const INITIAL_MIGRATED_IDS = new Set(['MOV-001', 'MOV-002', 'MOV-003', 'MOV-004', 'MOV-005', 'MOV-006']);
-
-    function getClientLiveBalance(client) {
-      let balance = Number(client.deudaBase) || 0;
-      for (const m of appState.movs) {
-        if (INITIAL_MIGRATED_IDS.has(m.id)) continue;
-        const matchById = m.clientId && m.clientId === client.id;
-        const matchByName = !m.clientId &&
-          (m.barberia || '').trim().toUpperCase() === (client.barberia || '').trim().toUpperCase() &&
-          (m.barbero || '').trim().toUpperCase() === (client.barbero || '').trim().toUpperCase();
-
-        if (matchById || matchByName) {
-          const amt = Number(m.monto) || 0;
-          if (m.tipo === 'VENTA FIADA') {
-            balance += amt;
-          } else if (m.tipo === 'ABONO / PAGO') {
-            balance -= amt;
-          }
-        }
-      }
-      return balance;
-    }
-
-    // Build clean WhatsApp URL with pre-filled reminder message
-    function buildWhatsAppLink(client, balance) {
-      let cleanPhone = (client.telefono || '').replace(/\D/g, '');
-      if (!cleanPhone) return null;
-      // Normalize Argentine mobile format
-      if (cleanPhone.startsWith('11') && cleanPhone.length === 10) {
-        cleanPhone = '549' + cleanPhone;
-      } else if (!cleanPhone.startsWith('54') && cleanPhone.length >= 10) {
-        cleanPhone = '549' + cleanPhone;
-      }
-      const nombre = client.barbero || client.barberia;
-      const text = balance > 0
-        ? `Hola ${nombre} (${client.barberia}), ¿cómo va todo? Te escribo de Rapibarbe para recordarte que tenemos un saldo pendiente de ${formatARS(balance)}. Avisame cuando pase por la zona así coordinamos. ¡Abrazo!`
-        : `Hola ${nombre} (${client.barberia}), ¿cómo andás? Te escribo de Rapibarbe para ver si necesitás reponer insumos esta semana.`;
-      return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`;
-    }
-
-    // 4. NAVIGATION & UI RENDERING
-    function switchTab(tabName) {
-      currentTab = tabName;
-      const tabs = ['dashboard', 'operacion', 'clientes', 'inventario'];
-      tabs.forEach(t => {
-        document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tabName);
-        const deskBtn = document.getElementById(`nav-desk-${t}`);
-        if (deskBtn) {
-          deskBtn.className = t === tabName
-            ? 'tab-active flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition'
-            : 'tab-inactive flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition';
-        }
-        const mobBtn = document.getElementById(`nav-mob-${t}`);
-        if (mobBtn) {
-          mobBtn.className = t === tabName
-            ? 'flex flex-col items-center justify-center py-1 px-2 rounded-xl text-navy-900 font-extrabold text-[11px]'
-            : 'flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-400 font-medium text-[11px]';
-        }
-      });
-      refreshAllViews();
-    }
-
-    function refreshAllViews() {
-      renderDashboard();
-      populateClientSelect();
-      renderMovements();
-      renderCRM();
-      renderInventory();
-    }
-
-    // --- TAB 1: DASHBOARD ---
-    function setRutaFilter(ruta) {
-      currentRutaFilter = ruta;
-      document.querySelectorAll('.ruta-btn').forEach(btn => {
-        const isSelected = btn.getAttribute('data-ruta') === ruta;
-        btn.className = isSelected
-          ? 'ruta-btn bg-navy-900 text-white px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition shadow-xs'
-          : 'ruta-btn bg-slate-100 text-slate-700 hover:bg-slate-200 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition';
-      });
-      renderDashboard();
-    }
-
-    function renderDashboard() {
-      let totalDeuda = 0;
-      let cantDeudores = 0;
-      const debtorsWithBalance = [];
-
-      appState.clients.forEach(c => {
-        const bal = getClientLiveBalance(c);
-        if (bal > 0) {
-          totalDeuda += bal;
-          cantDeudores++;
-          debtorsWithBalance.push({ ...c, saldoActual: bal });
-        }
-      });
-
-      // Cobros & Contado sum
-      let totalCobrado = 0;
-      appState.movs.forEach(m => {
-        if (m.tipo === 'ABONO / PAGO' || m.tipo === 'VENTA CONTADO') {
-          totalCobrado += Number(m.monto) || 0;
-        }
-      });
-
-      // Inventory retail value
-      let valorStock = 0;
-      appState.inv.forEach(item => {
-        const st = Number(item.stock) || 0;
-        const vt = Number(item.venta) || 0;
-        if (st > 0) valorStock += st * vt;
-      });
-
-      document.getElementById('kpi-total-deuda').textContent = formatARS(totalDeuda);
-      document.getElementById('kpi-cant-deudores').textContent = cantDeudores;
-      document.getElementById('kpi-total-cobrado').textContent = formatARS(totalCobrado);
-      document.getElementById('kpi-valor-stock').textContent = formatARS(valorStock);
-
-      // Filter debtors by selected route
-      const filteredDebtors = debtorsWithBalance
-        .filter(d => currentRutaFilter === 'TODOS' || (d.ruta || 'A DEFINIR') === currentRutaFilter)
-        .sort((a, b) => b.saldoActual - a.saldoActual);
-
-      const rutaSubtotal = filteredDebtors.reduce((acc, d) => acc + d.saldoActual, 0);
-      document.getElementById('ruta-subtotal-monto').textContent = `${formatARS(rutaSubtotal)} (${filteredDebtors.length})`;
-
-      const container = document.getElementById('dashboard-debtors-list');
-      if (filteredDebtors.length === 0) {
-        container.innerHTML = `
-          <div class="col-span-full py-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-            <p class="text-slate-600 font-bold">¡Excelente! No hay deudores pendientes en esta ruta.</p>
-          </div>
-        `;
-        return;
-      }
-
-      container.innerHTML = filteredDebtors.map(d => {
-        const waUrl = buildWhatsAppLink(d, d.saldoActual);
-        return `
-          <div class="border border-slate-200 rounded-2xl p-4 bg-white hover:border-slate-300 transition flex flex-col justify-between gap-3 shadow-2xs">
-            <div>
-              <div class="flex items-start justify-between gap-2">
-                <div>
-                  <span class="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-700">${d.zona || 'SIN ZONA'} · ${d.ruta}</span>
-                  <h3 class="font-extrabold text-slate-900 text-base mt-1 leading-tight">${d.barberia}</h3>
-                  <p class="text-xs font-semibold text-slate-500">Barbero: <span class="text-slate-800">${d.barbero}</span></p>
-                </div>
-                <div class="text-right">
-                  <span class="text-[10px] font-bold uppercase text-rose-600 block">Debe</span>
-                  <span class="text-lg font-extrabold text-rose-600">${formatARS(d.saldoActual)}</span>
-                </div>
-              </div>
-              ${d.direccion ? `<p class="text-xs text-slate-500 mt-2 truncate">📍 ${d.direccion}</p>` : ''}
-              ${d.notas ? `<p class="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-lg mt-1.5 font-medium">📝 ${d.notas}</p>` : ''}
-            </div>
-
-            <div class="flex items-center gap-2 pt-2 border-t border-slate-100">
-              ${waUrl ? `
-                <a href="${waUrl}" target="_blank" rel="noopener" class="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold transition">
-                  <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824z"/></svg>
-                  Recordar
-                </a>
-              ` : `
-                <span class="flex-1 text-center py-2.5 px-2 rounded-xl bg-slate-50 text-slate-400 text-xs font-medium border border-slate-200">Sin teléfono</span>
-              `}
-              <button onclick="openQuickCobroModal('${d.id}')" class="flex-1 py-2.5 px-3 rounded-xl bg-navy-900 hover:bg-navy-800 text-white text-xs font-bold transition shadow-2xs">
-                + Cobrar
-              </button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // --- TAB 2: OPERACIÓN RÁPIDA & HISTORIAL ---
-    function populateClientSelect(filterText = '') {
-      const select = document.getElementById('op-client-select');
-      const currentVal = select.value;
-      const query = filterText.trim().toLowerCase();
-
-      const sorted = [...appState.clients].sort((a, b) => a.barberia.localeCompare(b.barberia));
-      const filtered = query
-        ? sorted.filter(c =>
-            c.barberia.toLowerCase().includes(query) ||
-            c.barbero.toLowerCase().includes(query) ||
-            (c.zona || '').toLowerCase().includes(query)
-          )
-        : sorted;
-
-      select.innerHTML = filtered.map(c => {
-        const bal = getClientLiveBalance(c);
-        return `<option value="${c.id}">${c.barberia} — ${c.barbero} (${c.zona || 'S/Z'}) ${bal > 0 ? `[Debe ${formatARS(bal)}]` : ''}</option>`;
-      }).join('');
-
-      if (currentVal && filtered.some(c => c.id === currentVal)) {
-        select.value = currentVal;
-      }
-      updateSelectedClientPreview();
-    }
-
-    function filterClientDropdown() {
-      const val = document.getElementById('op-client-search').value;
-      populateClientSelect(val);
-    }
-
-    function updateSelectedClientPreview() {
-      const select = document.getElementById('op-client-select');
-      const client = appState.clients.find(c => c.id === select.value);
-      const preview = document.getElementById('op-client-balance-preview');
-      if (!client) {
-        preview.textContent = 'Seleccioná un cliente';
-        return;
-      }
-      const bal = getClientLiveBalance(client);
-      preview.innerHTML = bal > 0
-        ? `Saldo pendiente actual: <span class="text-rose-600 font-extrabold">${formatARS(bal)}</span> · Ruta: ${client.ruta}`
-        : `Estado actual: <span class="text-emerald-600 font-extrabold">AL DÍA ($0)</span> · Ruta: ${client.ruta}`;
-    }
-
-    function handleQuickOperation(e) {
-      e.preventDefault();
-      const clientId = document.getElementById('op-client-select').value;
-      const client = appState.clients.find(c => c.id === clientId);
-      if (!client) {
-        showToast('Elegí un cliente válido');
-        return;
-      }
-      const tipo = document.querySelector('input[name="op-tipo"]:checked').value;
-      const monto = parseFloat(document.getElementById('op-monto').value);
-      const medio = document.getElementById('op-medio').value;
-      const detalle = document.getElementById('op-detalle').value.trim() || tipo;
-      const fecha = document.getElementById('op-fecha').value || new Date().toISOString().split('T')[0];
-
-      if (!monto || monto <= 0) {
-        showToast('Ingresá un monto válido');
-        return;
-      }
-
-      const newMov = {
-        id: 'MOV-' + Date.now(),
-        clientId: client.id,
-        fecha,
-        barberia: client.barberia,
-        barbero: client.barbero,
-        tipo,
-        detalle,
-        medio,
-        monto,
-        obs: ''
-      };
-
-      appState.movs.unshift(newMov);
-      saveState();
-
-      // Reset form inputs
-      document.getElementById('op-monto').value = '';
-      document.getElementById('op-detalle').value = '';
-      refreshAllViews();
-      showToast(`Registrado: ${tipo} de ${formatARS(monto)} (${client.barberia})`);
-    }
-
-    function renderMovements() {
-      const q = (document.getElementById('mov-search').value || '').trim().toLowerCase();
-      const tbody = document.getElementById('movements-tbody');
-
-      const filtered = appState.movs.filter(m =>
-        !q ||
-        (m.barberia || '').toLowerCase().includes(q) ||
-        (m.barbero || '').toLowerCase().includes(q) ||
-        (m.detalle || '').toLowerCase().includes(q) ||
-        (m.tipo || '').toLowerCase().includes(q)
-      );
-
-      if (filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400">No hay movimientos para mostrar</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = filtered.map(m => {
-        let badgeClass = 'bg-sky-50 text-sky-700 border-sky-200';
-        if (m.tipo === 'ABONO / PAGO') badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        if (m.tipo === 'VENTA FIADA') badgeClass = 'bg-rose-50 text-rose-700 border-rose-200';
-
-        return `
-          <tr class="hover:bg-slate-50">
-            <td class="py-3 px-2 text-xs text-slate-500 whitespace-nowrap">${m.fecha}</td>
-            <td class="py-3 px-2">
-              <div class="font-bold text-slate-900 text-xs">${m.barberia}</div>
-              <div class="text-[11px] text-slate-500">${m.barbero}</div>
-            </td>
-            <td class="py-3 px-2">
-              <span class="inline-block px-2 py-0.5 rounded-md border text-[10px] font-extrabold ${badgeClass}">${m.tipo}</span>
-              <span class="block text-[10px] text-slate-400 mt-0.5">${m.medio}</span>
-            </td>
-            <td class="py-3 px-2 text-xs text-slate-600 max-w-[180px] truncate" title="${m.detalle}">${m.detalle}</td>
-            <td class="py-3 px-2 text-right font-extrabold text-slate-900 whitespace-nowrap">${formatARS(m.monto)}</td>
-            <td class="py-3 px-2 text-center">
-              <button onclick="deleteMovement('${m.id}')" title="Eliminar movimiento" class="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-              </button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-
-    function deleteMovement(movId) {
-      appState.movs = appState.movs.filter(m => m.id !== movId);
-      saveState();
-      refreshAllViews();
-      showToast('Movimiento eliminado y saldo recalculado');
-    }
-
-    // --- TAB 3: CLIENTES Y DEUDORES (CRM) ---
-    function setCrmFilter(filter) {
-      currentCrmFilter = filter;
-      ['TODOS', 'DEBE', 'AL DIA'].forEach(f => {
-        const btn = document.getElementById(`crm-filter-${f}`);
-        btn.className = f === filter
-          ? 'crm-filter-btn px-3.5 py-2 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition'
-          : 'crm-filter-btn px-3.5 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition';
-      });
-      renderCRM();
-    }
-
-    function renderCRM() {
-      const q = (document.getElementById('crm-search').value || '').trim().toLowerCase();
-      document.getElementById('crm-total-count').textContent = appState.clients.length;
-
-      const enriched = appState.clients.map(c => ({
-        ...c,
-        saldoActual: getClientLiveBalance(c)
-      })).filter(c => {
-        const matchesSearch = !q ||
-          c.barberia.toLowerCase().includes(q) ||
-          c.barbero.toLowerCase().includes(q) ||
-          (c.zona || '').toLowerCase().includes(q) ||
-          (c.ruta || '').toLowerCase().includes(q);
-        const matchesStatus =
-          currentCrmFilter === 'TODOS' ||
-          (currentCrmFilter === 'DEBE' && c.saldoActual > 0) ||
-          (currentCrmFilter === 'AL DIA' && c.saldoActual <= 0);
-        return matchesSearch && matchesStatus;
-      }).sort((a, b) => b.saldoActual - a.saldoActual || a.barberia.localeCompare(b.barberia));
-
-      // Desktop Table
-      const tbody = document.getElementById('crm-tbody');
-      tbody.innerHTML = enriched.map(c => {
-        const waUrl = buildWhatsAppLink(c, c.saldoActual);
-        const isDebe = c.saldoActual > 0;
-        return `
-          <tr class="hover:bg-slate-50">
-            <td class="py-3 px-3">
-              <div class="font-extrabold text-slate-900">${c.barberia}</div>
-              <div class="text-xs text-slate-500">Barbero: <span class="font-semibold text-slate-700">${c.barbero}</span></div>
-            </td>
-            <td class="py-3 px-3">
-              <span class="text-xs font-bold text-slate-800">${c.zona || '—'}</span>
-              <span class="block text-[11px] text-slate-500">${c.ruta}</span>
-            </td>
-            <td class="py-3 px-3">
-              ${waUrl ? `<a href="${waUrl}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline">📱 ${c.telefono}</a>` : `<span class="text-xs text-slate-400">Sin teléfono</span>`}
-            </td>
-            <td class="py-3 px-3 text-right font-extrabold ${isDebe ? 'text-rose-600' : 'text-slate-700'}">
-              ${formatARS(c.saldoActual)}
-            </td>
-            <td class="py-3 px-3 text-center">
-              <span class="inline-block px-2.5 py-1 rounded-full text-[10px] font-extrabold ${isDebe ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}">
-                ${isDebe ? 'DEBE' : 'AL DÍA'}
-              </span>
-            </td>
-            <td class="py-3 px-3 text-right whitespace-nowrap space-x-1">
-              <button onclick="openQuickCobroModal('${c.id}')" class="px-2.5 py-1.5 rounded-lg bg-navy-900 hover:bg-navy-800 text-white text-xs font-bold transition">+ Cobrar / Fiar</button>
-              <button onclick="openClientHistoryModal('${c.id}')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">Historial</button>
-              <button onclick="openEditClientModal('${c.id}')" class="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">Editar</button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-
-      // Mobile Cards
-      const mobContainer = document.getElementById('crm-mobile-cards');
-      mobContainer.innerHTML = enriched.map(c => {
-        const waUrl = buildWhatsAppLink(c, c.saldoActual);
-        const isDebe = c.saldoActual > 0;
-        return `
-          <div class="border border-slate-200 rounded-2xl p-4 bg-white space-y-2.5">
-            <div class="flex justify-between items-start">
-              <div>
-                <h3 class="font-extrabold text-slate-900">${c.barberia}</h3>
-                <p class="text-xs text-slate-500">${c.barbero} · ${c.zona || 'S/Z'} (${c.ruta})</p>
-              </div>
-              <div class="text-right">
-                <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold ${isDebe ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}">${isDebe ? 'DEBE' : 'AL DÍA'}</span>
-                <p class="font-extrabold text-base mt-0.5 ${isDebe ? 'text-rose-600' : 'text-slate-800'}">${formatARS(c.saldoActual)}</p>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-              ${waUrl ? `<a href="${waUrl}" target="_blank" rel="noopener" class="px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">WhatsApp</a>` : ''}
-              <button onclick="openQuickCobroModal('${c.id}')" class="flex-1 py-2 px-3 rounded-xl bg-navy-900 text-white text-xs font-bold">+ Cobrar / Fiar</button>
-              <button onclick="openClientHistoryModal('${c.id}')" class="py-2 px-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Historial</button>
-              <button onclick="openEditClientModal('${c.id}')" class="py-2 px-3 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">Editar</button>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // --- TAB 4: INVENTARIO / STOCK ---
-    function setInvFilter(filter) {
-      currentInvFilter = filter;
-      ['TODOS', 'CON_STOCK', 'REPONER'].forEach(f => {
-        const btn = document.getElementById(`inv-filter-${f}`);
-        btn.className = f === filter
-          ? 'inv-filter-btn px-3 py-2 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm transition'
-          : 'inv-filter-btn px-3 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 transition';
-      });
-      renderInventory();
-    }
-
-    function renderInventory() {
-      const q = (document.getElementById('inv-search').value || '').trim().toLowerCase();
-      document.getElementById('inv-total-count').textContent = appState.inv.length;
-
-      const filtered = appState.inv.filter(item => {
-        const matchesSearch = !q ||
-          item.producto.toLowerCase().includes(q) ||
-          item.codigo.toLowerCase().includes(q);
-        const st = Number(item.stock) || 0;
-        const matchesStatus =
-          currentInvFilter === 'TODOS' ||
-          (currentInvFilter === 'CON_STOCK' && st > 0) ||
-          (currentInvFilter === 'REPONER' && st <= 3);
-        return matchesSearch && matchesStatus;
-      });
-
-      const container = document.getElementById('inventory-list');
-      container.innerHTML = filtered.map(item => {
-        const st = Number(item.stock) || 0;
-        let badge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-100 text-emerald-700">OK</span>`;
-        if (st <= 0) {
-          badge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-rose-100 text-rose-700">SIN STOCK</span>`;
-        } else if (st <= 3) {
-          badge = `<span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-amber-100 text-amber-800">REPONER</span>`;
-        }
-
-        return `
-          <div class="border border-slate-200 rounded-2xl p-3.5 bg-white flex flex-col justify-between gap-3">
-            <div class="flex items-start justify-between gap-2">
-              <div>
-                <span class="text-[10px] font-bold text-slate-400">${item.codigo}</span>
-                <h4 class="text-xs sm:text-sm font-bold text-slate-900 leading-snug mt-0.5">${item.producto}</h4>
-              </div>
-              ${badge}
-            </div>
-            <div class="flex items-center justify-between pt-2 border-t border-slate-100">
-              <div>
-                <span class="text-[10px] text-slate-400 block">Precio Venta</span>
-                <span class="text-sm font-extrabold text-slate-900">${formatARS(item.venta)}</span>
-              </div>
-              <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
-                <button onclick="adjustStock('${item.codigo}', -1)" class="w-8 h-8 rounded-lg bg-white hover:bg-rose-50 text-slate-800 hover:text-rose-600 font-extrabold shadow-2xs transition">-1</button>
-                <span class="w-9 text-center font-extrabold text-sm ${st <= 0 ? 'text-rose-600' : 'text-slate-900'}">${st}</span>
-                <button onclick="adjustStock('${item.codigo}', 1)" class="w-8 h-8 rounded-lg bg-white hover:bg-emerald-50 text-slate-800 hover:text-emerald-600 font-extrabold shadow-2xs transition">+1</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    function adjustStock(codigo, delta) {
-      const prod = appState.inv.find(i => i.codigo === codigo);
-      if (!prod) return;
-      prod.stock = (Number(prod.stock) || 0) + delta;
-      saveState();
-      renderInventory();
-      // Update KPI on dashboard quietly
-      let valorStock = 0;
-      appState.inv.forEach(item => {
-        const st = Number(item.stock) || 0;
-        const vt = Number(item.venta) || 0;
-        if (st > 0) valorStock += st * vt;
-      });
-      document.getElementById('kpi-valor-stock').textContent = formatARS(valorStock);
-    }
-
-    // 5. MODALS LOGIC
-    function openModal(id) {
-      const el = document.getElementById(id);
-      el.classList.remove('hidden');
-      el.classList.add('flex');
-    }
-
-    function closeModal(id) {
-      const el = document.getElementById(id);
-      el.classList.add('hidden');
-      el.classList.remove('flex');
-    }
-
-    // Quick Cobro Modal
-    function openQuickCobroModal(clientId) {
-      const client = appState.clients.find(c => c.id === clientId);
-      if (!client) return;
-      const bal = getClientLiveBalance(client);
-      document.getElementById('modal-cobro-client-id').value = client.id;
-      document.getElementById('modal-cobro-client-name').textContent = `${client.barberia} — ${client.barbero}`;
-      document.getElementById('modal-cobro-current-debt').textContent = formatARS(bal);
-      document.getElementById('modal-cobro-monto').value = '';
-      document.getElementById('modal-cobro-detalle').value = '';
-      openModal('modal-quick-cobro');
-    }
-
-    function submitModalCobro(e) {
-      e.preventDefault();
-      const clientId = document.getElementById('modal-cobro-client-id').value;
-      const client = appState.clients.find(c => c.id === clientId);
-      if (!client) return;
-
-      const tipo = document.getElementById('modal-cobro-tipo').value;
-      const monto = parseFloat(document.getElementById('modal-cobro-monto').value);
-      const medio = document.getElementById('modal-cobro-medio').value;
-      const detalle = document.getElementById('modal-cobro-detalle').value.trim() || (tipo === 'ABONO / PAGO' ? 'Cobro en ruta' : 'Venta fiada en ruta');
-      const fecha = new Date().toISOString().split('T')[0];
-
-      if (!monto || monto <= 0) return;
-
-      appState.movs.unshift({
-        id: 'MOV-' + Date.now(),
-        clientId: client.id,
-        fecha,
-        barberia: client.barberia,
-        barbero: client.barbero,
-        tipo,
-        detalle,
-        medio,
-        monto,
-        obs: ''
-      });
-
-      saveState();
-      closeModal('modal-quick-cobro');
-      refreshAllViews();
-      showToast(`${tipo} de ${formatARS(monto)} cargado a ${client.barberia}`);
-    }
-
-    // New / Edit Client Modal
-    function openNewClientModal() {
-      document.getElementById('modal-client-heading').textContent = 'Nuevo Cliente';
-      document.getElementById('edit-client-id').value = '';
-      document.getElementById('edit-client-barberia').value = '';
-      document.getElementById('edit-client-barbero').value = '';
-      document.getElementById('edit-client-zona').value = '';
-      document.getElementById('edit-client-ruta').value = 'MARTES';
-      document.getElementById('edit-client-telefono').value = '';
-      document.getElementById('edit-client-deuda').value = '0';
-      document.getElementById('edit-client-direccion').value = '';
-      document.getElementById('edit-client-notas').value = '';
-      openModal('modal-client-form');
-    }
-
-    function openEditClientModal(clientId) {
-      const c = appState.clients.find(x => x.id === clientId);
-      if (!c) return;
-      document.getElementById('modal-client-heading').textContent = 'Editar Cliente';
-      document.getElementById('edit-client-id').value = c.id;
-      document.getElementById('edit-client-barberia').value = c.barberia;
-      document.getElementById('edit-client-barbero').value = c.barbero;
-      document.getElementById('edit-client-zona').value = c.zona || '';
-      document.getElementById('edit-client-ruta').value = c.ruta || 'A DEFINIR';
-      document.getElementById('edit-client-telefono').value = c.telefono || '';
-      document.getElementById('edit-client-deuda').value = c.deudaBase || 0;
-      document.getElementById('edit-client-direccion').value = c.direccion || '';
-      document.getElementById('edit-client-notas').value = c.notas || '';
-      openModal('modal-client-form');
-    }
-
-    function submitClientForm(e) {
-      e.preventDefault();
-      const id = document.getElementById('edit-client-id').value;
-      const data = {
-        barberia: document.getElementById('edit-client-barberia').value.trim().toUpperCase(),
-        barbero: document.getElementById('edit-client-barbero').value.trim().toUpperCase(),
-        zona: document.getElementById('edit-client-zona').value.trim().toUpperCase(),
-        ruta: document.getElementById('edit-client-ruta').value,
-        telefono: document.getElementById('edit-client-telefono').value.trim(),
-        deudaBase: parseFloat(document.getElementById('edit-client-deuda').value) || 0,
-        direccion: document.getElementById('edit-client-direccion').value.trim().toUpperCase(),
-        notas: document.getElementById('edit-client-notas').value.trim()
-      };
-
-      if (id) {
-        const idx = appState.clients.findIndex(c => c.id === id);
-        if (idx !== -1) {
-          appState.clients[idx] = { ...appState.clients[idx], ...data };
-        }
-        showToast('Ficha de cliente actualizada');
-      } else {
-        const newClient = {
-          id: 'CLI-' + Date.now(),
-          categoria: 'PLATA',
-          ...data
-        };
-        appState.clients.unshift(newClient);
-        showToast('Nuevo cliente agregado');
-      }
-
-      saveState();
-      closeModal('modal-client-form');
-      refreshAllViews();
-    }
-
-    // Client History Modal
-    function openClientHistoryModal(clientId) {
-      const c = appState.clients.find(x => x.id === clientId);
-      if (!c) return;
-      const bal = getClientLiveBalance(c);
-      document.getElementById('hist-client-title').textContent = `${c.barberia} — ${c.barbero}`;
-      document.getElementById('hist-client-subtitle').textContent = `Saldo Base Inicial: ${formatARS(c.deudaBase)} · Saldo Actual: ${formatARS(bal)}`;
-
-      const clientMovs = appState.movs.filter(m =>
-        (m.clientId && m.clientId === c.id) ||
-        (!m.clientId && (m.barberia || '').toUpperCase() === c.barberia.toUpperCase() && (m.barbero || '').toUpperCase() === c.barbero.toUpperCase())
-      );
-
-      const body = document.getElementById('hist-client-body');
-      if (clientMovs.length === 0) {
-        body.innerHTML = `<p class="text-sm text-slate-500 py-6 text-center">No hay movimientos registrados posteriores a la carga inicial.</p>`;
-      } else {
-        body.innerHTML = clientMovs.map(m => `
-          <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between">
-            <div>
-              <span class="text-[10px] font-bold text-slate-400">${m.fecha} · ${m.medio}</span>
-              <p class="text-xs font-extrabold text-slate-900">${m.tipo}</p>
-              <p class="text-xs text-slate-600">${m.detalle}</p>
-            </div>
-            <span class="font-extrabold text-sm ${m.tipo === 'ABONO / PAGO' ? 'text-emerald-600' : 'text-rose-600'}">
-              ${m.tipo === 'ABONO / PAGO' ? '-' : '+'}${formatARS(m.monto)}
-            </span>
-          </div>
-        `).join('');
-      }
-      openModal('modal-client-history');
-    }
-
-    // New Product Modal
-    function openNewProductModal() {
-      document.getElementById('new-prod-nombre').value = '';
-      document.getElementById('new-prod-stock').value = '10';
-      document.getElementById('new-prod-venta').value = '';
-      openModal('modal-new-product');
-    }
-
-    function submitNewProduct(e) {
-      e.preventDefault();
-      const nombre = document.getElementById('new-prod-nombre').value.trim().toUpperCase();
-      const stock = parseInt(document.getElementById('new-prod-stock').value, 10) || 0;
-      const venta = parseFloat(document.getElementById('new-prod-venta').value) || 0;
-
-      appState.inv.unshift({
-        codigo: 'ART-' + String(appState.inv.length + 200),
-        producto: nombre,
-        stock,
-        costo: 0,
-        venta
-      });
-
-      saveState();
-      closeModal('modal-new-product');
-      refreshAllViews();
-      showToast('Producto agregado al inventario');
-    }
-
-    // 6. BACKUP, EXPORT CSV & RESET
-    function exportBackupJSON() {
-      const dataStr = JSON.stringify(appState, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const today = new Date().toISOString().split('T')[0];
-      a.href = url;
-      a.download = `Rapibarbe_Respaldo_${today}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('Respaldo JSON descargado (listo para mandar por WhatsApp)');
-    }
-
-    function importBackupJSON(event) {
-      const file = event.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(e) {
-        try {
-          const parsed = JSON.parse(e.target.result);
-          if (parsed && Array.isArray(parsed.clients) && Array.isArray(parsed.movs) && Array.isArray(parsed.inv)) {
-            appState = parsed;
-            saveState();
-            refreshAllViews();
-            showToast('¡Respaldo importado con éxito!');
-          } else {
-            showToast('El archivo JSON no tiene el formato de Rapibarbe');
-          }
-        } catch (err) {
-          showToast('Error al leer el archivo JSON');
-        }
-        event.target.value = '';
-      };
-      reader.readAsText(file);
-    }
-
-    function exportCSV() {
-      const headers = ['ID', 'Barberia', 'Barbero', 'Zona', 'Ruta', 'Telefono', 'Saldo_Actual', 'Estado'];
-      const rows = appState.clients.map(c => {
-        const bal = getClientLiveBalance(c);
-        return [
-          c.id,
-          `"${(c.barberia || '').replace(/"/g, '""')}"`,
-          `"${(c.barbero || '').replace(/"/g, '""')}"`,
-          `"${(c.zona || '').replace(/"/g, '""')}"`,
-          `"${(c.ruta || '').replace(/"/g, '""')}"`,
-          `"${(c.telefono || '').replace(/"/g, '""')}"`,
-          bal,
-          bal > 0 ? 'DEBE' : 'AL DIA'
-        ].join(';');
-      });
-
-      const csvContent = '\uFEFF' + [headers.join(';'), ...rows].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      const today = new Date().toISOString().split('T')[0];
-      a.href = url;
-      a.download = `Rapibarbe_Clientes_Deudas_${today}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('Planilla CSV descargada para Excel');
-    }
-
-    function openResetModal() {
-      openModal('modal-reset-confirm');
-    }
-
-    function confirmResetData() {
-      appState = JSON.parse(JSON.stringify(INITIAL_DATA));
-      saveState();
-      closeModal('modal-reset-confirm');
-      refreshAllViews();
-      showToast('Datos restaurados a la planilla original');
-    }
-
-    // Toast notification helper
-    let toastTimeout;
-    function showToast(message) {
-      const toast = document.getElementById('toast');
-      document.getElementById('toast-msg').textContent = message;
-      toast.classList.remove('translate-y-24', 'opacity-0', 'pointer-events-none');
-      clearTimeout(toastTimeout);
-      toastTimeout = setTimeout(() => {
-        toast.classList.add('translate-y-24', 'opacity-0', 'pointer-events-none');
-      }, 3200);
-    }
-
-    // 7. INITIALIZE ON LOAD
-    window.onload = function() {
-      loadState();
-      // Set default date in quick operation form to today
-      const today = new Date().toISOString().split('T')[0];
-      document.getElementById('op-fecha').value = today;
-      refreshAllViews();
-    };
-  </script>
+  <script src="script.js"></script>
 </body>
 </html>
