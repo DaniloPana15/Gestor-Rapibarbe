@@ -9,6 +9,11 @@ let config = { pin: '1234', cloudKey: '', cloudBin: '', geminiKey: '' };
 let activeRouteFilter = 'TODOS';
 let currentCart = [];
 
+// Paginación progresiva para que el inicio sea súper liviano
+let debtorsLimit = 10;
+let clientsLimit = 20;
+let invLimit = 25;
+
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -58,31 +63,31 @@ async function persistData() {
   renderAll();
 
   if (config.cloudKey && config.cloudBin) {
-    setSyncStatus('Sincronizando con nube...', false);
+    setSyncStatus('Sincronizando...', false);
     try {
       const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'X-Master-Key': config.cloudKey },
         body: JSON.stringify(db)
       });
-      setSyncStatus(res.ok ? 'Sincronizado en la nube ✓' : 'Error al subir (guardado local OK)', res.ok);
+      setSyncStatus(res.ok ? 'Nube sincronizada ✓' : 'Guardado local (error nube)', res.ok);
     } catch (err) {
-      setSyncStatus('Sin internet (guardado local)', false);
+      setSyncStatus('Sin internet (local OK)', false);
     }
   } else {
-    setSyncStatus('Guardado en este dispositivo', false);
+    setSyncStatus('Guardado local', false);
   }
 }
 
 async function syncFromCloud(silent = false) {
   if (!config.cloudKey || !config.cloudBin) {
     if (!silent) {
-      showToast('Configurá tu API Key en "Nube & IA" para sincronizar.');
+      showToast('Configurá tu API Key en Ajustes para sincronizar.');
       switchTab('nube');
     }
     return;
   }
-  if (!silent) setSyncStatus('Descargando de la nube...', false);
+  if (!silent) setSyncStatus('Actualizando...', false);
   try {
     const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}/latest`, {
       headers: { 'X-Master-Key': config.cloudKey }
@@ -93,11 +98,11 @@ async function syncFromCloud(silent = false) {
       db = json.record;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
       renderAll();
-      setSyncStatus('Nube actualizada ✓', true);
-      if (!silent) showToast('Datos actualizados desde la nube');
+      setSyncStatus('Nube al día ✓', true);
+      if (!silent) showToast('Datos sincronizados');
     }
   } catch (e) {
-    if (!silent) setSyncStatus('No se pudo conectar a la nube', false);
+    if (!silent) setSyncStatus('Error de conexión', false);
   }
 }
 
@@ -105,7 +110,7 @@ async function createCloudBin() {
   const key = document.getElementById('cloud-key').value.trim();
   if (!key) return showToast('Pegá primero tu X-Master-Key de JSONBin.io');
   config.cloudKey = key;
-  showToast('Creando base de datos privada en la nube...');
+  showToast('Creando nube privada...');
   try {
     const res = await fetch('https://api.jsonbin.io/v3/b', {
       method: 'POST',
@@ -122,11 +127,11 @@ async function createCloudBin() {
       config.cloudBin = data.metadata.id;
       document.getElementById('cloud-bin').value = config.cloudBin;
       saveConfigLocal();
-      setSyncStatus('Nube privada conectada ✓', true);
+      setSyncStatus('Nube conectada ✓', true);
       showToast('¡Nube creada! Compartí el Bin ID con Freddy.');
     }
   } catch (e) {
-    showToast('Error de conexión con JSONBin.io');
+    showToast('Error al conectar con JSONBin.io');
   }
 }
 
@@ -136,7 +141,7 @@ function saveCloudConfig(e) {
   config.cloudBin = document.getElementById('cloud-bin').value.trim();
   config.geminiKey = document.getElementById('gemini-key').value.trim();
   saveConfigLocal();
-  showToast('Configuración guardada');
+  showToast('Claves guardadas');
   if (config.cloudKey && config.cloudBin) syncFromCloud();
 }
 
@@ -180,9 +185,16 @@ function updatePin(e) {
 
 function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.nav-pill').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-pill, .mob-nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + tabId).classList.add('active');
-  document.querySelector(`.nav-pill[data-tab="${tabId}"]`).classList.add('active');
+  document.querySelectorAll(`[data-tab="${tabId}"]`).forEach(b => b.classList.add('active'));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function showLowStockDirect() {
+  document.getElementById('filter-low-stock').checked = true;
+  renderInventory();
+  switchTab('inventario');
 }
 
 function getClientBalance(client) {
@@ -224,23 +236,29 @@ function renderKPIs() {
   });
 
   document.getElementById('kpi-deuda').textContent = fmtMoney(totalDeuda);
-  document.getElementById('kpi-deudores-count').textContent = `${deudoresCount} barberos con saldo pendiente`;
+  document.getElementById('kpi-deudores-count').textContent = `${deudoresCount} con saldo`;
   document.getElementById('kpi-cobrado').textContent = fmtMoney(totalCobrado);
   document.getElementById('kpi-ventas').textContent = fmtMoney(ventasContado + ventasFiadas);
-  document.getElementById('kpi-ventas-split').textContent = `Contado: ${fmtMoney(ventasContado)} | Fiado: ${fmtMoney(ventasFiadas)}`;
+  document.getElementById('kpi-ventas-split').textContent = `Contado ${fmtMoney(ventasContado)}`;
   document.getElementById('kpi-stock-bajo').textContent = db.inv.filter(i => Number(i.stock) <= 3).length;
 }
 
 function setRouteFilter(route, btn) {
   activeRouteFilter = route;
+  debtorsLimit = 10;
   document.querySelectorAll('#route-filters .chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   renderDashboard();
 }
 
+function expandDebtorsList() {
+  debtorsLimit += 50;
+  renderDashboard();
+}
+
 function renderDashboard() {
   const q = (document.getElementById('dash-search').value || '').toLowerCase();
-  const tbody = document.getElementById('dash-debtors-body');
+  const listEl = document.getElementById('dash-debtors-list');
 
   const debtors = db.clients
     .map(c => ({ ...c, saldoActual: getClientBalance(c) }))
@@ -253,25 +271,40 @@ function renderDashboard() {
     )
     .sort((a, b) => b.saldoActual - a.saldoActual);
 
-  tbody.innerHTML = debtors.length ? debtors.map(c => {
+  const visibleDebtors = q ? debtors : debtors.slice(0, debtorsLimit);
+  const remaining = debtors.length - visibleDebtors.length;
+  const loadMoreWrap = document.getElementById('load-more-debtors-wrap');
+  if (remaining > 0) {
+    loadMoreWrap.style.display = 'block';
+    document.getElementById('remaining-debtors-count').textContent = remaining;
+  } else {
+    loadMoreWrap.style.display = 'none';
+  }
+
+  listEl.innerHTML = visibleDebtors.length ? visibleDebtors.map(c => {
     const cleanPhone = (c.telefono || '').replace(/\D/g, '');
     const waPhone = cleanPhone.startsWith('54') ? cleanPhone : (cleanPhone ? '549' + cleanPhone : '');
     const waMsg = encodeURIComponent(`Hola ${c.barbero}! Cómo va? Te escribo de Rapibarbe para recordarte el saldo pendiente de ${fmtMoney(c.saldoActual)}. Avisame cuando pase por ${c.zona || 'tu local'}!`);
     const waBtn = waPhone ? `<a href="https://wa.me/${waPhone}?text=${waMsg}" target="_blank" class="btn-sm btn-wa">WhatsApp</a>` : '';
 
     return `
-      <tr>
-        <td><div class="font-bold">${c.barberia}</div><div class="muted">${c.barbero}</div></td>
-        <td><div>${c.zona || '-'}</div><div class="muted" style="font-size:11px;">${c.ruta || 'A DEFINIR'}</div></td>
-        <td class="text-right font-bold text-amber">${fmtMoney(c.saldoActual)}</td>
-        <td class="text-right" style="white-space:nowrap;">
-          ${waBtn}
-          <button class="btn-sm btn-pay" onclick="quickPayment('${c.barberia.replace(/'/g, "\\'")}', '${c.barbero.replace(/'/g, "\\'")}', ${c.saldoActual})">+ Cobrar</button>
-        </td>
-      </tr>
+      <div class="item-card">
+        <div class="item-main">
+          <div class="item-title">${c.barberia} — ${c.barbero}</div>
+          <div class="item-meta">📍 ${c.zona || 'Sin zona'} · ${c.ruta || 'A definir'}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount text-amber">${fmtMoney(c.saldoActual)}</div>
+          <div class="item-actions">
+            ${waBtn}
+            <button class="btn-sm btn-pay" onclick="quickPayment('${c.barberia.replace(/'/g, "\\'")}', '${c.barbero.replace(/'/g, "\\'")}', ${c.saldoActual})">+ Cobrar</button>
+          </div>
+        </div>
+      </div>
     `;
-  }).join('') : `<tr><td colspan="4" class="text-center muted" style="padding:24px;">No hay deudas pendientes en este filtro.</td></tr>`;
+  }).join('') : `<p class="muted" style="text-align:center; padding:24px;">No hay deudas pendientes en este filtro.</p>`;
 
+  // Barras por ruta (dentro de detalles colapsables)
   const routeTotals = {};
   db.clients.forEach(c => {
     const s = getClientBalance(c);
@@ -284,7 +317,7 @@ function renderDashboard() {
   document.getElementById('route-bars').innerHTML = Object.entries(routeTotals)
     .sort((a, b) => b[1] - a[1])
     .map(([ruta, total]) => `
-      <div class="bar-row">
+      <div>
         <div class="bar-labels"><span>${ruta}</span><span class="font-bold">${fmtMoney(total)}</span></div>
         <div class="bar-track"><div class="bar-fill" style="width:${Math.round((total / maxRoute) * 100)}%"></div></div>
       </div>
@@ -299,7 +332,7 @@ function renderDashboard() {
           <div class="font-bold" style="font-size:13px;">${m.barberia} — ${m.barbero}</div>
           <div class="muted" style="font-size:11.5px;">${m.fecha} · ${m.detalle || m.tipo}</div>
         </div>
-        <div class="font-bold ${isPay ? 'text-green' : 'text-main'}">${isPay ? '+' : ''}${fmtMoney(m.monto)}</div>
+        <div class="font-bold ${isPay ? 'text-green' : ''}">${isPay ? '+' : ''}${fmtMoney(m.monto)}</div>
       </div>
     `;
   }).join('');
@@ -317,15 +350,17 @@ function quickPayment(barberia, barbero, saldo) {
 
 function populateDatalists() {
   document.getElementById('clientes-datalist').innerHTML = db.clients
-    .map(c => `<option value="${c.barberia} | ${c.barbero}">${c.zona} (${c.ruta})</option>`).join('');
+    .map(c => `<option value="${c.barberia} | ${c.barbero}">${c.zona}</option>`).join('');
   document.getElementById('productos-datalist').innerHTML = db.inv
     .map(p => `<option value="${p.codigo} | ${p.producto}">Stock: ${p.stock} · ${fmtMoney(p.venta)}</option>`).join('');
 }
 
-/* --- CARRITO DE PRODUCTOS Y DESCUENTO AUTOMÁTICO DE STOCK --- */
+/* --- CARRITO --- */
 function toggleProductPicker() {
   const tipo = document.getElementById('mov-tipo').value;
-  document.getElementById('product-picker-box').style.display = (tipo === 'ABONO / PAGO') ? 'none' : 'block';
+  const isPay = tipo === 'ABONO / PAGO';
+  document.getElementById('product-picker-box').style.display = isPay ? 'none' : 'block';
+  document.getElementById('abono-parcial-group').style.display = (tipo === 'VENTA FIADA') ? 'block' : 'none';
 }
 
 function addCartItem() {
@@ -335,7 +370,7 @@ function addCartItem() {
 
   const code = raw.split('|')[0].trim().toUpperCase();
   const prod = db.inv.find(p => p.codigo === code || p.producto.toUpperCase().includes(raw.toUpperCase()));
-  if (!prod) return showToast('Seleccioná un producto válido de la lista');
+  if (!prod) return showToast('Seleccioná un producto de la lista');
 
   const existing = currentCart.find(x => x.codigo === prod.codigo);
   if (existing) existing.qty += qty;
@@ -366,7 +401,7 @@ function renderCart() {
     return `
       <div class="cart-chip">
         <span><strong>${item.qty}x</strong> ${item.producto} (${fmtMoney(sub)})</span>
-        <button type="button" class="btn-icon" onclick="removeCartItem(${idx})" style="font-size:14px;">✕</button>
+        <button type="button" class="btn-icon" onclick="removeCartItem(${idx})">✕</button>
       </div>
     `;
   }).join('');
@@ -375,10 +410,10 @@ function renderCart() {
   document.getElementById('mov-detalle').value = details.join(', ');
 }
 
-/* --- DICTADO POR VOZ E INTERPRETACIÓN INTELIGENTE --- */
+/* --- DICTADO POR VOZ --- */
 function startDictation() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return showToast('Tu navegador no soporta dictado directo; usá el micrófono del teclado del celular.');
+  if (!SpeechRecognition) return showToast('Usá el micrófono del teclado de tu celular.');
 
   const btn = document.getElementById('btn-mic');
   const rec = new SpeechRecognition();
@@ -399,7 +434,7 @@ async function parseSmartCommand() {
   if (!text) return showToast('Escribí o dictá primero el pedido');
 
   if (config.geminiKey) {
-    showToast('Interpretando pedido con IA...');
+    showToast('Completando con IA...');
     try {
       const cliList = db.clients.map(c => `${c.barberia} | ${c.barbero}`).join('; ');
       const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
@@ -434,11 +469,9 @@ Devolvé SOLO JSON válido con este formato exacto:
       } else if (parsed.montoManual) {
         document.getElementById('mov-monto').value = parsed.montoManual;
       }
-      showToast('¡Listo! Revisá los datos y tocá Guardar.');
+      showToast('Formulario completado ✓');
       return;
-    } catch (err) {
-      showToast('Fallo IA, aplicando lectura rápida local...');
-    }
+    } catch (err) {}
   }
 
   const lower = text.toLowerCase();
@@ -460,11 +493,9 @@ Devolvé SOLO JSON válido con este formato exacto:
   }
 
   const nums = text.match(/\d{4,}/g);
-  if (nums && nums.length) {
-    document.getElementById('mov-monto').value = nums[0];
-  }
+  if (nums && nums.length) document.getElementById('mov-monto').value = nums[0];
   document.getElementById('mov-detalle').value = text;
-  showToast('Datos pre-cargados. Verificá cliente y productos.');
+  showToast('Datos cargados, revisá y guardá');
 }
 
 async function saveMovement(e) {
@@ -504,7 +535,7 @@ async function saveMovement(e) {
     medio,
     monto,
     items: [...currentCart],
-    obs: document.getElementById('mov-obs').value.trim()
+    obs: ''
   });
 
   if (tipo === 'VENTA FIADA' && abonoParcial > 0) {
@@ -514,7 +545,7 @@ async function saveMovement(e) {
       barberia: barberia.toUpperCase(),
       barbero: barbero.toUpperCase(),
       tipo: 'ABONO / PAGO',
-      detalle: 'Entrega a cuenta en el momento de la venta',
+      detalle: 'Entrega a cuenta en el momento',
       medio,
       monto: abonoParcial,
       obs: ''
@@ -526,14 +557,13 @@ async function saveMovement(e) {
   document.getElementById('mov-monto').value = '';
   document.getElementById('mov-abono-parcial').value = '';
   document.getElementById('mov-detalle').value = '';
-  document.getElementById('mov-obs').value = '';
   document.getElementById('voice-input').value = '';
   await persistData();
-  showToast('Movimiento guardado y stock actualizado');
+  showToast('Operación guardada ✓');
 }
 
 function deleteMovement(id) {
-  if (!confirm('¿Eliminar este movimiento? Se recalculará el saldo y se devolverá el stock si tenía productos.')) return;
+  if (!confirm('¿Eliminar este movimiento?')) return;
   const mov = db.movs.find(m => m.id === id);
   if (mov && mov.items && mov.items.length) {
     mov.items.forEach(it => {
@@ -543,23 +573,31 @@ function deleteMovement(id) {
   }
   db.movs = db.movs.filter(m => m.id !== id);
   persistData();
-  showToast('Movimiento eliminado y stock restaurado');
+  showToast('Eliminado');
 }
 
 function renderMovements() {
-  const tbody = document.getElementById('all-movs-body');
-  tbody.innerHTML = [...db.movs].reverse().map(m => {
+  const listEl = document.getElementById('all-movs-list');
+  listEl.innerHTML = [...db.movs].reverse().slice(0, 30).map(m => {
     const badgeClass = m.tipo === 'ABONO / PAGO' ? 'badge-green' : (m.tipo === 'VENTA FIADA' ? 'badge-amber' : 'badge-blue');
     return `
-      <tr>
-        <td>${m.fecha}</td>
-        <td><div class="font-bold">${m.barberia}</div><div class="muted" style="font-size:11.5px;">${m.barbero} · ${m.detalle || ''}</div></td>
-        <td><span class="kpi-badge ${badgeClass}">${m.tipo}</span></td>
-        <td class="text-right font-bold">${fmtMoney(m.monto)}</td>
-        <td class="text-right"><button class="btn-icon" onclick="deleteMovement('${m.id}')" title="Eliminar">🗑</button></td>
-      </tr>
+      <div class="item-card">
+        <div class="item-main">
+          <div class="item-title">${m.barberia} — ${m.barbero}</div>
+          <div class="item-meta">${m.fecha} · <span class="badge-pill ${badgeClass}">${m.tipo}</span> ${m.detalle ? '· ' + m.detalle : ''}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount">${fmtMoney(m.monto)}</div>
+          <button class="btn-icon" onclick="deleteMovement('${m.id}')" title="Eliminar">🗑</button>
+        </div>
+      </div>
     `;
   }).join('');
+}
+
+function expandClientsList() {
+  clientsLimit += 40;
+  renderClients();
 }
 
 function renderClients() {
@@ -570,18 +608,24 @@ function renderClients() {
     (c.zona || '').toLowerCase().includes(q) ||
     (c.ruta || '').toLowerCase().includes(q)
   );
-  document.getElementById('clients-body').innerHTML = filtered.map(c => {
+
+  document.getElementById('clients-total-count').textContent = filtered.length;
+  const visible = q ? filtered : filtered.slice(0, clientsLimit);
+  document.getElementById('load-more-clients-wrap').style.display = (filtered.length > visible.length) ? 'block' : 'none';
+
+  document.getElementById('clients-list').innerHTML = visible.map(c => {
     const saldo = getClientBalance(c);
     return `
-      <tr>
-        <td class="font-bold">${c.barberia}</td>
-        <td>${c.barbero}</td>
-        <td><div>${c.zona || '-'}</div><div class="muted" style="font-size:11.5px;">${c.direccion || ''}</div></td>
-        <td>${c.ruta || '-'}</td>
-        <td><span class="tag-tier tier-${c.categoria}">${c.categoria}</span></td>
-        <td class="text-right font-bold ${saldo > 0 ? 'text-amber' : 'text-green'}">${fmtMoney(saldo)}</td>
-        <td class="text-right"><button class="btn-sm btn-pay" onclick="openClientModal('${c.id}')">Editar</button></td>
-      </tr>
+      <div class="item-card">
+        <div class="item-main">
+          <div class="item-title">${c.barberia} — ${c.barbero}</div>
+          <div class="item-meta">📍 ${c.zona || '-'} · ${c.ruta || 'A definir'} ${c.direccion ? '· ' + c.direccion : ''}</div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount ${saldo > 0 ? 'text-amber' : 'text-green'}">${fmtMoney(saldo)}</div>
+          <button class="btn-sm btn-pay" onclick="openClientModal('${c.id}')">Editar</button>
+        </div>
+      </div>
     `;
   }).join('');
 }
@@ -631,7 +675,12 @@ function saveClient(e) {
   }
   closeModal('client-modal');
   persistData();
-  showToast('Cliente guardado');
+  showToast('Cliente guardado ✓');
+}
+
+function expandInvList() {
+  invLimit += 50;
+  renderInventory();
 }
 
 function renderInventory() {
@@ -641,22 +690,27 @@ function renderInventory() {
     const matchText = (i.producto || '').toLowerCase().includes(q) || (i.codigo || '').toLowerCase().includes(q);
     return matchText && (!onlyLow || Number(i.stock) <= 3);
   });
-  document.getElementById('inv-body').innerHTML = items.map(i => {
+
+  const visible = (q || onlyLow) ? items : items.slice(0, invLimit);
+  document.getElementById('load-more-inv-wrap').style.display = (items.length > visible.length) ? 'block' : 'none';
+
+  document.getElementById('inv-list').innerHTML = visible.map(i => {
     const st = Number(i.stock);
     const stClass = st <= 0 ? 'text-red' : (st <= 3 ? 'text-amber' : 'text-green');
     return `
-      <tr>
-        <td class="muted">${i.codigo}</td>
-        <td class="font-bold">${i.producto}</td>
-        <td class="text-center font-bold ${stClass}">${st} u.</td>
-        <td class="text-right">${fmtMoney(i.venta)}</td>
-        <td class="text-right">
+      <div class="item-card">
+        <div class="item-main">
+          <div class="item-title">${i.producto}</div>
+          <div class="item-meta">${i.codigo} · Venta: <strong>${fmtMoney(i.venta)}</strong></div>
+        </div>
+        <div class="item-right">
+          <div class="item-amount ${stClass}">${st} u.</div>
           <div class="stock-stepper">
-            <button class="step-btn" onclick="adjustStock('${i.codigo}', -1)">-1</button>
-            <button class="step-btn" onclick="adjustStock('${i.codigo}', 1)">+1</button>
+            <button class="step-btn" onclick="adjustStock('${i.codigo}', -1)">−</button>
+            <button class="step-btn" onclick="adjustStock('${i.codigo}', 1)">+</button>
           </div>
-        </td>
-      </tr>
+        </div>
+      </div>
     `;
   }).join('');
 }
@@ -682,7 +736,7 @@ function saveProduct(e) {
   document.getElementById('prod-nombre').value = '';
   closeModal('product-modal');
   persistData();
-  showToast('Producto agregado al stock');
+  showToast('Producto agregado ✓');
 }
 
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
@@ -709,7 +763,7 @@ function importBackup(e) {
 }
 
 function resetToExcelDefault() {
-  if (!confirm('¿Volver a los datos originales del Excel?')) return;
+  if (!confirm('¿Volver a los datos originales?')) return;
   db = JSON.parse(JSON.stringify(INITIAL_DATA));
   persistData();
   showToast('Datos originales restaurados');
@@ -719,5 +773,5 @@ function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3200);
+  setTimeout(() => t.classList.remove('show'), 2800);
 }
