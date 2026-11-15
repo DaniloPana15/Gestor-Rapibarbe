@@ -27,6 +27,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 30000);
 });
 
+window.addEventListener('resize', () => {
+  const dock = document.getElementById('mobile-dock');
+  if (dock && sessionStorage.getItem('rapibarbe_unlocked') === '1') {
+    dock.style.display = window.innerWidth <= 960 ? 'flex' : 'none';
+  }
+});
+
 function loadConfig() {
   const saved = localStorage.getItem(CONFIG_KEY);
   if (saved) {
@@ -311,11 +318,11 @@ function renderDashboard() {
     const isPay = m.tipo === 'ABONO / PAGO';
     return `
       <div class="activity-item">
-        <div>
-          <div class="font-bold" style="font-size:13px;">${m.barberia} — ${m.barbero}</div>
-          <div class="muted" style="font-size:11.5px;">${m.fecha} · ${m.detalle || m.tipo}</div>
+        <div style="min-width:0; flex:1;">
+          <div class="font-bold" style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.barberia} — ${m.barbero}</div>
+          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.fecha} · ${m.detalle || m.tipo}</div>
         </div>
-        <div class="font-bold ${isPay ? 'text-green' : 'text-main'}">${isPay ? '+' : ''}${fmtMoney(m.monto)}</div>
+        <div class="font-bold ${isPay ? 'text-green' : 'text-main'}" style="flex-shrink:0;">${isPay ? '+' : ''}${fmtMoney(m.monto)}</div>
       </div>
     `;
   }).join('');
