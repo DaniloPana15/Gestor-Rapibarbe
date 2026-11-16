@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Rapibarbe — Sistema de Gestión & Cobranzas</title>
+  <title>Rapibarbe — Sistema de Gestión, Pedidos & Cobranzas</title>
   <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="favicon.png" />
   <link rel="apple-touch-icon" href="logo-rapibarbe.png" />
@@ -25,7 +25,7 @@
         <span>RAPIBARBE PRO</span>
       </div>
       <h2>Acceso Privado</h2>
-      <p>Ingresá tu PIN de administrador para gestionar clientes, cobranzas y stock.</p>
+      <p>Ingresá tu PIN de administrador para gestionar clientes, pedidos, cobranzas y stock.</p>
       <form id="login-form" onsubmit="unlockApp(event)">
         <input type="password" id="pin-input" inputmode="numeric" maxlength="8" placeholder="••••" required autofocus />
         <button type="submit" class="btn-primary btn-full">Desbloquear Sistema</button>
@@ -59,6 +59,7 @@
       <nav class="nav-pills desktop-nav" role="tablist">
         <button class="nav-pill active" data-tab="dashboard" onclick="switchTab('dashboard')">Inicio</button>
         <button class="nav-pill" data-tab="movimientos" onclick="switchTab('movimientos')">+ Operación</button>
+        <button class="nav-pill" data-tab="pedidos" onclick="switchTab('pedidos')">Pedidos (<span id="nav-orders-count">0</span>)</button>
         <button class="nav-pill" data-tab="clientes" onclick="switchTab('clientes')">Clientes</button>
         <button class="nav-pill" data-tab="inventario" onclick="switchTab('inventario')">Stock</button>
         <button class="nav-pill" data-tab="nube" onclick="switchTab('nube')">Nube & IA</button>
@@ -101,11 +102,11 @@
           <span>Cobrar</span>
         </button>
 
-        <button class="qa-item" onclick="triggerQuickAction('VENTA CONTADO')">
-          <div class="qa-box">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <button class="qa-item" onclick="switchTab('pedidos')">
+          <div class="qa-box qa-box-amber">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
           </div>
-          <span>Contado</span>
+          <span>Pedidos (<b id="kpi-pedidos-pendientes">0</b>)</span>
         </button>
 
         <button class="qa-item" onclick="switchTab('inventario')">
@@ -197,24 +198,47 @@
       </div>
     </main>
 
-    <!-- TAB 2: CARGAR VENTA O COBRO -->
+    <!-- TAB 2: CARGAR VENTA, COBRO O PEDIDO (CON AUDIO WHATSAPP MULTI-OPERACIÓN) -->
     <main id="tab-movimientos" class="tab-content">
       <div class="two-col-form">
         <div class="glass-card panel-box">
           
-          <!-- CARGA RÁPIDA POR VOZ / IA -->
-          <div class="voice-box">
+          <!-- CARGA RÁPIDA POR VOZ / AUDIO WHATSAPP / IA -->
+          <div class="voice-box" id="audio-dropzone">
             <div class="voice-head">
-              <span>⚡ Carga Rápida por Voz o Texto</span>
-              <button type="button" class="btn-mic" id="btn-mic" onclick="startDictation()">🎙️ Dictar</button>
+              <span>⚡ Carga Rápida: Audio WhatsApp o Texto</span>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <label class="btn-audio-upload" title="Subir nota de voz de WhatsApp (.ogg, .opus, .mp3, .m4a)">
+                  📎 Subir Audio
+                  <input type="file" id="wa-audio-file" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav" onchange="handleAudioFileSelect(event)" hidden />
+                </label>
+                <button type="button" class="btn-mic" id="btn-mic" onclick="startDictation()">🎙️ Dictar</button>
+              </div>
             </div>
-            <textarea id="voice-input" rows="2" placeholder="Ej: Venta fiada a Richar Ronal: 2 after shave y 1 cool care, abonó 10000"></textarea>
-            <button type="button" class="btn-primary btn-full" style="margin-top:10px;" onclick="parseSmartCommand()">✨ Autocompletar Formulario</button>
+            
+            <div class="drop-hint" id="drop-hint-text">
+              💡 Arrastrá un audio de WhatsApp de Freddy acá (puede tener varias ventas, cobros y pedidos juntos) o escribí abajo:
+            </div>
+
+            <textarea id="voice-input" rows="2" placeholder="Ej: Le dejé fiado 2 after shave a Matías, cobré 50 mil de Lucas, y anotame un pedido para Pocho de 3 capas para el viernes"></textarea>
+            <button type="button" class="btn-primary btn-full" style="margin-top:10px;" onclick="parseSmartCommand()">✨ Interpretar con IA</button>
+
+            <!-- BANNER DE PEDIDO ÚNICO DETECTADO -->
+            <div id="detected-order-banner" class="order-banner" style="display:none;">
+              <div class="order-banner-info">
+                <strong>📦 ¡Pedido / Encargo Detectado!</strong>
+                <span id="detected-order-summary"></span>
+              </div>
+              <button type="button" class="btn-sm btn-order-save" onclick="saveDetectedOrder()">+ Guardar en Pedidos</button>
+            </div>
+
+            <!-- CONTENEDOR DE LOTE MULTI-OPERACIÓN (CUANDO UN AUDIO TRAE VARIOS MOVIMIENTOS) -->
+            <div id="batch-review-container" style="display:none; margin-top:12px;"></div>
           </div>
 
           <hr class="divider" />
 
-          <h2>Registrar Operación</h2>
+          <h2>Registrar Operación Individual</h2>
           <p class="muted">Los productos agregados se descuentan automáticamente del stock.</p>
           
           <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
@@ -229,6 +253,7 @@
                   <option value="VENTA FIADA">📝 VENTA FIADA (Suma deuda)</option>
                   <option value="VENTA CONTADO">✅ VENTA CONTADO (No altera deuda)</option>
                   <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
+                  <option value="PEDIDO">📦 PEDIDO / ENCARGO (Va a bandeja Pedidos)</option>
                 </select>
               </div>
             </div>
@@ -256,7 +281,7 @@
             <div class="form-row">
               <div class="form-group">
                 <label>Monto Total ($ ARS)</label>
-                <input type="number" id="mov-monto" min="1" step="any" placeholder="Ej: 45000" required />
+                <input type="number" id="mov-monto" min="0" step="any" placeholder="Ej: 45000" required />
               </div>
               <div class="form-group">
                 <label>Medio de Pago</label>
@@ -279,8 +304,8 @@
             </div>
 
             <div class="form-group">
-              <label>Observaciones (Opcional)</label>
-              <input type="text" id="mov-obs" placeholder="Ej: Pasa el viernes por el resto" />
+              <label>Observaciones / Día de entrega (Opcional)</label>
+              <input type="text" id="mov-obs" placeholder="Ej: Llevar el viernes en ruta Flores" />
             </div>
 
             <button type="submit" class="btn-primary btn-full">Guardar Operación</button>
@@ -312,7 +337,88 @@
       </div>
     </main>
 
-    <!-- TAB 3: CLIENTES -->
+    <!-- TAB 3: PEDIDOS Y ENCARGOS -->
+    <main id="tab-pedidos" class="tab-content">
+      <div class="dashboard-split">
+        <div class="glass-card panel-box">
+          <div class="panel-head">
+            <div>
+              <h2>📦 Bandeja de Pedidos & Encargos</h2>
+              <p class="muted">Pedidos enviados por Freddy por audio o cargados manualmente. Al entregar, se convierten en venta y descuentan stock.</p>
+            </div>
+            <div class="route-filters" id="order-status-filters">
+              <button class="chip active" onclick="setOrderFilter('PENDIENTE', this)">Pendientes</button>
+              <button class="chip" onclick="setOrderFilter('ENTREGADO', this)">Entregados</button>
+              <button class="chip" onclick="setOrderFilter('TODOS', this)">Todos</button>
+            </div>
+          </div>
+
+          <div class="search-bar-inline">
+            <input type="text" id="order-search" placeholder="🔍 Buscar pedido por barbería, barbero o artículo..." oninput="renderOrders()" />
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha / Ruta</th>
+                  <th>Cliente</th>
+                  <th>Pedido / Artículos</th>
+                  <th class="text-right">Est.</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- RESUMEN DE MERCADERÍA A PREPARAR -->
+        <div class="side-stack">
+          <div class="glass-card panel-box">
+            <div class="panel-head">
+              <div>
+                <h3>🚚 Lista de Carga (Pedidos Pendientes)</h3>
+                <p class="muted">Total de mercadería a preparar antes de salir a ruta</p>
+              </div>
+            </div>
+            <div id="orders-picking-list" class="activity-list"></div>
+          </div>
+
+          <div class="glass-card panel-box">
+            <div class="panel-head">
+              <div>
+                <h3>➕ Nuevo Pedido Rápido</h3>
+                <p class="muted">Anotar encargo sin descontar stock todavía</p>
+              </div>
+            </div>
+            <form onsubmit="saveQuickOrder(event)" class="styled-form">
+              <div class="form-group">
+                <label>Cliente</label>
+                <input type="text" id="quick-order-cli" list="clientes-datalist" placeholder="Barbería | Barbero" required />
+              </div>
+              <div class="form-group">
+                <label>¿Qué encargó?</label>
+                <input type="text" id="quick-order-detail" placeholder="Ej: 2 capas Everest y 1 cuchilla Magic Clip" required />
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Monto Estimado ($)</label>
+                  <input type="number" id="quick-order-total" value="0" min="0" />
+                </div>
+                <div class="form-group">
+                  <label>Nota / Día</label>
+                  <input type="text" id="quick-order-nota" placeholder="Ej: Viernes" />
+                </div>
+              </div>
+              <button type="submit" class="btn-primary btn-full">Guardar Pedido</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 4: CLIENTES -->
     <main id="tab-clientes" class="tab-content">
       <div class="glass-card panel-box">
         <div class="panel-head">
@@ -346,7 +452,7 @@
       </div>
     </main>
 
-    <!-- TAB 4: INVENTARIO -->
+    <!-- TAB 5: INVENTARIO -->
     <main id="tab-inventario" class="tab-content">
       <div class="glass-card panel-box">
         <div class="panel-head">
@@ -384,12 +490,12 @@
       </div>
     </main>
 
-    <!-- TAB 5: NUBE GRATUITA & IA -->
+    <!-- TAB 6: NUBE GRATUITA & IA -->
     <main id="tab-nube" class="tab-content">
       <div class="two-col-form">
         <div class="glass-card panel-box">
           <h2>☁️ Sincronización Nube & IA</h2>
-          <p class="muted">Conectá JSONBin para compartir datos en tiempo real con Freddy y Gemini API para dictado inteligente.</p>
+          <p class="muted">Conectá JSONBin para compartir datos en tiempo real con Freddy y Gemini API para transcribir audios de WhatsApp.</p>
           
           <form onsubmit="saveCloudConfig(event)" class="styled-form">
             <div class="form-group">
@@ -401,7 +507,7 @@
               <input type="text" id="cloud-bin" placeholder="Ej: 6736a9b1ad19ca34f8c..." />
             </div>
             <div class="form-group">
-              <label>Gemini API Key (Opcional)</label>
+              <label>Gemini API Key (Necesaria para leer audios de WhatsApp)</label>
               <input type="password" id="gemini-key" placeholder="AIzaSy..." />
             </div>
             <div class="form-row">
@@ -445,20 +551,23 @@
   <nav class="mobile-bottom-dock" id="mobile-dock" style="display:none;">
     <div class="dock-pill">
       <button class="dock-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="Inicio">
-        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </button>
+      <button class="dock-btn" data-tab="pedidos" onclick="switchTab('pedidos')" title="Pedidos">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
       </button>
       <button class="dock-btn" data-tab="clientes" onclick="switchTab('clientes')" title="Clientes">
-        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </button>
       <button class="dock-btn" data-tab="inventario" onclick="switchTab('inventario')" title="Stock">
-        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
       </button>
       <button class="dock-btn" data-tab="nube" onclick="switchTab('nube')" title="Nube & IA">
-        <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
       </button>
     </div>
-    <button class="dock-fab" data-tab="movimientos" onclick="switchTab('movimientos')" title="Nueva Venta o Cobro">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    <button class="dock-fab" data-tab="movimientos" onclick="switchTab('movimientos')" title="Nueva Venta, Cobro o Audio">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
   </nav>
 
