@@ -1,5 +1,5 @@
-// Base de datos inicial migrada desde Rapibarbe_Sistema_Centralizado_v1.xlsx
-// (Mantené tu línea const INITIAL_DATA = {...}; intacta arriba de todo, o usá el script.js descargable arriba que ya la incluye completa)
+// Respaldo inicial seguro (si tenés tu const INITIAL_DATA = {...} del Excel, podés pegarlo acá reemplazando esta línea)
+const INITIAL_DATA = { clients: [], movs: [], inv: [] };
 
 const STORAGE_KEY = 'rapibarbe_db_v3';
 const CONFIG_KEY = 'rapibarbe_config_v2';
@@ -16,6 +16,7 @@ const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR')
 
 document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
+  applyMagicLinkFromUrl();
   loadLocalData();
   document.getElementById('mov-fecha').value = new Date().toISOString().split('T')[0];
   setupAudioDropzone();
@@ -141,7 +142,7 @@ async function createCloudBin() {
       document.getElementById('cloud-bin').value = config.cloudBin;
       saveConfigLocal();
       setSyncStatus('Nube privada conectada ✓', true);
-      showToast('¡Nube creada! Compartí el Bin ID con Freddy.');
+      showToast('¡Nube creada! Tocá "Copiar Link de Acceso" para compartirlo.');
     }
   } catch (e) {
     showToast('Error de conexión con JSONBin.io');
@@ -156,6 +157,52 @@ function saveCloudConfig(e) {
   saveConfigLocal();
   showToast('Configuración guardada');
   if (config.cloudKey && config.cloudBin) syncFromCloud();
+}
+
+function copyMagicAccessLink() {
+  const payload = {
+    cloudKey: document.getElementById('cloud-key').value.trim() || config.cloudKey,
+    cloudBin: document.getElementById('cloud-bin').value.trim() || config.cloudBin,
+    geminiKey: document.getElementById('gemini-key').value.trim() || config.geminiKey,
+    pin: config.pin
+  };
+
+  if (!payload.cloudKey || !payload.cloudBin) {
+    return showToast('Primero cargá o creá tu nube (Master Key y Bin ID).');
+  }
+
+  const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+  const baseUrl = window.location.href.split('#')[0].split('?')[0];
+  const magicUrl = `${baseUrl}#setup=${encoded}`;
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(magicUrl)
+      .then(() => showToast('📲 Link mágico copiado. Pegalo en WhatsApp para Freddy o tu celu.'))
+      .catch(() => prompt('Copiá este link de acceso rápido:', magicUrl));
+  } else {
+    prompt('Copiá este link de acceso rápido:', magicUrl);
+  }
+}
+
+function applyMagicLinkFromUrl() {
+  const hash = window.location.hash || '';
+  if (!hash.startsWith('#setup=')) return;
+
+  try {
+    const encoded = hash.replace('#setup=', '');
+    const decoded = JSON.parse(decodeURIComponent(atob(encoded)));
+    if (decoded.cloudKey) config.cloudKey = decoded.cloudKey;
+    if (decoded.cloudBin) config.cloudBin = decoded.cloudBin;
+    if (decoded.geminiKey) config.geminiKey = decoded.geminiKey;
+    if (decoded.pin) config.pin = decoded.pin;
+
+    saveConfigLocal();
+    loadConfig();
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    setTimeout(() => showToast('☁️ ¡Nube, IA y PIN configurados automáticamente!'), 400);
+  } catch (e) {
+    console.error('Error leyendo link de configuración:', e);
+  }
 }
 
 function setSyncStatus(text, isCloud) {
