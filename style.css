@@ -1062,3 +1062,22 @@ input:focus, select:focus, textarea:focus {
   .panel-box { padding: 18px 14px; border-radius: 20px; }
   .data-table th, .data-table td { padding: 11px 8px; }
 }
+
+/* TARJETAS SELECCIONABLES DEL REPORTE POR PERÍODO */
+.report-check-card {
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.report-check-card:hover {
+  border-color: var(--blue-bright);
+  transform: translateY(-1px);
+}
+
+.report-check-card.report-card-off {
+  opacity: 0.42;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(8, 12, 24, 0.4);
+}
