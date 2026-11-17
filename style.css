@@ -15,6 +15,8 @@
   --green-soft: rgba(16, 185, 129, 0.16);
   --amber: #f59e0b;
   --amber-soft: rgba(245, 158, 11, 0.16);
+  --purple: #8b5cf6;
+  --purple-soft: rgba(139, 92, 246, 0.18);
   --red: #ef4444;
   --red-soft: rgba(239, 68, 68, 0.16);
   --radius-xl: 24px;
@@ -246,7 +248,7 @@ body {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  padding: 8px 14px;
+  padding: 8px 13px;
   border-radius: 999px;
   font-family: inherit;
   font-size: 12.5px;
@@ -402,6 +404,12 @@ body {
   color: #fcd34d;
 }
 
+.qa-box-purple {
+  background: linear-gradient(145deg, rgba(139, 92, 246, 0.38), rgba(91, 33, 182, 0.5));
+  border-color: rgba(196, 181, 253, 0.45);
+  color: #ddd6fe;
+}
+
 .mini-stats-row {
   display: flex;
   flex-direction: column;
@@ -487,6 +495,54 @@ body {
 .panel-head h2 { font-size: 18px; font-weight: 700; }
 .panel-head h3 { font-size: 16px; font-weight: 700; }
 .muted { color: var(--text-muted); font-size: 13px; }
+
+/* RESUMEN DIARIO PAPÁ (FREDDY) */
+.daily-papa-card {
+  border-color: rgba(59, 130, 246, 0.35);
+  background: linear-gradient(155deg, rgba(23, 37, 84, 0.55), rgba(13, 19, 36, 0.88));
+}
+
+.papa-kpis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.papa-kpi-box {
+  background: rgba(8, 12, 24, 0.72);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.papa-kpi-main {
+  border-color: rgba(96, 165, 250, 0.45);
+  background: rgba(30, 58, 138, 0.32);
+}
+
+.papa-kpi-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.papa-kpi-value {
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.papa-kpi-sub {
+  font-size: 11px;
+  color: #94a3b8;
+}
 
 /* CHIPS DE FILTRO */
 .route-filters { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -592,6 +648,112 @@ input:focus, select:focus, textarea:focus {
 .btn-pay { background: var(--blue-soft); color: #93c5fd; border: 1px solid var(--border-glow); }
 .btn-order-save { background: var(--amber-soft); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.45); }
 
+/* AGENDA Y HABIT TRACKER */
+.task-creator-card {
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.task-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.2s;
+}
+
+.task-card.task-overdue {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.task-card.task-today {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.task-card.task-done {
+  opacity: 0.55;
+}
+
+.task-check-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 2px solid var(--blue-bright);
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.task-check-btn.checked {
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.habit-progress-box {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.habit-add-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.habits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.habit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.habit-row.habit-today-highlight {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.habit-day-pill {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--purple-soft);
+  color: #ddd6fe;
+  min-width: 44px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 /* TABLAS */
 .table-wrap {
   width: 100%;
@@ -630,6 +792,8 @@ input:focus, select:focus, textarea:focus {
 .badge-green { background: var(--green-soft); color: #6ee7b7; }
 .badge-blue { background: var(--blue-soft); color: #93c5fd; }
 .badge-amber { background: var(--amber-soft); color: #fcd34d; }
+.badge-purple { background: var(--purple-soft); color: #ddd6fe; }
+.badge-red { background: var(--red-soft); color: #fca5a5; }
 
 .tag-tier { font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); }
 .tier-DIAMOND { background: rgba(56, 189, 248, 0.18); color: #7dd3fc; }
@@ -838,7 +1002,8 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
-@media (max-width: 540px) {
+@media (max-width: 600px) {
+  .papa-kpis-grid { grid-template-columns: minmax(0, 1fr); }
   .form-row { grid-template-columns: minmax(0, 1fr); }
   .panel-box { padding: 18px 14px; border-radius: 20px; }
   .data-table th, .data-table td { padding: 11px 8px; }
