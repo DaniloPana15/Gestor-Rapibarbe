@@ -219,7 +219,7 @@
           <div class="panel-head">
             <div>
               <h2>📅 Agenda de Avisos & Tareas Programadas</h2>
-              <p class="muted">Programá avisos de pago por WhatsApp, grabaciones de polo barbero o visitas por fecha.</p>
+              <p class="muted">Programá, editá o completá avisos de pago por WhatsApp, grabaciones de polo o visitas.</p>
             </div>
             <div class="route-filters" id="task-filters">
               <button class="chip active" onclick="setTaskFilter('PENDIENTES', this)">Pendientes</button>
@@ -348,7 +348,7 @@
           <hr class="divider" />
 
           <h2>Registrar Operación Individual</h2>
-          <p class="muted">Tanto ventas, cobros como pedidos quedan guardados en el historial.</p>
+          <p class="muted">Tanto ventas, cobros como pedidos quedan guardados en el historial y se pueden editar.</p>
           
           <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
             <div class="form-row">
@@ -468,7 +468,7 @@
             <div class="panel-head">
               <div>
                 <h2>Historial de Operaciones (Ventas, Cobros & Pedidos)</h2>
-                <p class="muted">Todo lo registrado aparece acá. Al eliminar una venta con productos, el stock se devuelve.</p>
+                <p class="muted">Tocá ✏️ para editar cualquier error o 🗑 para eliminar.</p>
               </div>
             </div>
 
@@ -490,7 +490,7 @@
                     <th>Cliente / Detalle</th>
                     <th>Tipo</th>
                     <th class="text-right">Monto</th>
-                    <th></th>
+                    <th class="text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody id="all-movs-body"></tbody>
@@ -508,7 +508,7 @@
           <div class="panel-head">
             <div>
               <h2>📦 Bandeja de Pedidos & Encargos</h2>
-              <p class="muted">Pedidos enviados por Freddy por audio o cargados manualmente. Al entregar, se convierten en venta y descuentan stock.</p>
+              <p class="muted">Editá, entregá o eliminá pedidos. Al entregar, se convierten en venta y descuentan stock.</p>
             </div>
             <div class="route-filters" id="order-status-filters">
               <button class="chip active" onclick="setOrderFilter('PENDIENTE', this)">Pendientes</button>
@@ -588,7 +588,7 @@
         <div class="panel-head">
           <div>
             <h2>Directorio de Barberías</h2>
-            <p class="muted">Buscá por local, barbero, barrio o día de ruta.</p>
+            <p class="muted">Agregá, editá o eliminá clientes, barberías y saldos iniciales.</p>
           </div>
           <button class="btn-primary" onclick="openClientModal()">+ Nuevo Cliente</button>
         </div>
@@ -622,7 +622,7 @@
         <div class="panel-head">
           <div>
             <h2>Inventario de Insumos</h2>
-            <p class="muted">Control rápido de stock con botones -1 / +1.</p>
+            <p class="muted">Agregá, editá precio/nombre/stock o ajustá rápido con -1 / +1.</p>
           </div>
           <div class="inv-controls">
             <label class="toggle-label">
@@ -645,7 +645,7 @@
                 <th>Producto</th>
                 <th class="text-center">Stock</th>
                 <th class="text-right">Precio</th>
-                <th class="text-right">Ajuste</th>
+                <th class="text-right">Ajuste / Editar</th>
               </tr>
             </thead>
             <tbody id="inv-body"></tbody>
@@ -738,7 +738,7 @@
     </button>
   </nav>
 
-  <!-- MODALES -->
+  <!-- MODAL 1: EDITAR / NUEVO CLIENTE -->
   <div id="client-modal" class="modal-overlay" style="display:none;">
     <div class="modal-card glass-card">
       <div class="panel-head">
@@ -807,20 +807,22 @@
     </div>
   </div>
 
+  <!-- MODAL 2: EDITAR / NUEVO PRODUCTO DE STOCK -->
   <div id="product-modal" class="modal-overlay" style="display:none;">
     <div class="modal-card glass-card">
       <div class="panel-head">
-        <h3>Nuevo Artículo de Stock</h3>
+        <h3 id="product-modal-title">Nuevo Artículo de Stock</h3>
         <button class="btn-icon" onclick="closeModal('product-modal')">✕</button>
       </div>
       <form onsubmit="saveProduct(event)" class="styled-form">
+        <input type="hidden" id="edit-prod-code" />
         <div class="form-group">
           <label>Nombre del Producto *</label>
           <input type="text" id="prod-nombre" required />
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Stock Inicial</label>
+            <label>Stock Actual</label>
             <input type="number" id="prod-stock" value="10" required />
           </div>
           <div class="form-group">
@@ -828,7 +830,147 @@
             <input type="number" id="prod-venta" value="6000" required />
           </div>
         </div>
-        <button type="submit" class="btn-primary btn-full">Agregar al Inventario</button>
+        <button type="submit" class="btn-primary btn-full">Guardar Producto</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 3: EDITAR OPERACIÓN (VENTA / COBRO / ABONO) -->
+  <div id="edit-mov-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-card">
+      <div class="panel-head">
+        <h3>✏️ Editar Operación</h3>
+        <button class="btn-icon" onclick="closeModal('edit-mov-modal')">✕</button>
+      </div>
+      <form onsubmit="saveEditedMovement(event)" class="styled-form">
+        <input type="hidden" id="edit-mov-id" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="edit-mov-fecha" required />
+          </div>
+          <div class="form-group">
+            <label>Tipo de Operación</label>
+            <select id="edit-mov-tipo" required>
+              <option value="VENTA FIADA">📝 VENTA FIADA (Suma deuda)</option>
+              <option value="VENTA CONTADO">✅ VENTA CONTADO (No altera deuda)</option>
+              <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Cliente (Barbería | Barbero)</label>
+          <input type="text" id="edit-mov-cliente" list="clientes-datalist" required />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Monto ($ ARS)</label>
+            <input type="number" id="edit-mov-monto" min="0" step="any" required />
+          </div>
+          <div class="form-group">
+            <label>Medio de Pago</label>
+            <select id="edit-mov-medio">
+              <option value="EFECTIVO">Efectivo</option>
+              <option value="TRANSFERENCIA">Transferencia / MP</option>
+              <option value="CUENTA CORRIENTE">Cuenta Corriente (Fiado)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Detalle de Productos</label>
+          <input type="text" id="edit-mov-detalle" required />
+        </div>
+        <div class="form-group">
+          <label>Observaciones</label>
+          <input type="text" id="edit-mov-obs" />
+        </div>
+        <button type="submit" class="btn-primary btn-full">Guardar Cambios</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: EDITAR PEDIDO / ENCARGO -->
+  <div id="edit-order-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-card">
+      <div class="panel-head">
+        <h3>✏️ Editar Pedido / Encargo</h3>
+        <button class="btn-icon" onclick="closeModal('edit-order-modal')">✕</button>
+      </div>
+      <form onsubmit="saveEditedOrder(event)" class="styled-form">
+        <input type="hidden" id="edit-ord-id" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha del Pedido</label>
+            <input type="date" id="edit-ord-fecha" required />
+          </div>
+          <div class="form-group">
+            <label>Estado</label>
+            <select id="edit-ord-estado">
+              <option value="PENDIENTE">⏳ PENDIENTE</option>
+              <option value="ENTREGADO">✅ ENTREGADO</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Cliente (Barbería | Barbero)</label>
+          <input type="text" id="edit-ord-cliente" list="clientes-datalist" required />
+        </div>
+        <div class="form-group">
+          <label>Artículos / Detalle del Pedido</label>
+          <input type="text" id="edit-ord-detalle" required />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Monto Estimado ($ ARS)</label>
+            <input type="number" id="edit-ord-total" min="0" step="any" required />
+          </div>
+          <div class="form-group">
+            <label>Ruta</label>
+            <input type="text" id="edit-ord-ruta" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notas / Día de entrega</label>
+          <input type="text" id="edit-ord-notas" />
+        </div>
+        <button type="submit" class="btn-primary btn-full">Guardar Cambios del Pedido</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 5: EDITAR TAREA / AVISO DE AGENDA -->
+  <div id="edit-task-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-card glass-card">
+      <div class="panel-head">
+        <h3>✏️ Editar Tarea / Aviso</h3>
+        <button class="btn-icon" onclick="closeModal('edit-task-modal')">✕</button>
+      </div>
+      <form onsubmit="saveEditedTask(event)" class="styled-form">
+        <input type="hidden" id="edit-tsk-id" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha Programada</label>
+            <input type="date" id="edit-tsk-fecha" required />
+          </div>
+          <div class="form-group">
+            <label>Tipo de Acción</label>
+            <select id="edit-tsk-tipo">
+              <option value="AVISO PAGO">💸 Avisar de pagar (WhatsApp)</option>
+              <option value="GRABAR POLO">🎥 Contenido</option>
+              <option value="AVISO RUTA">🚚 Avisar visita</option>
+              <option value="GENERAL">📌 Otra tarea / Recordatorio</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Cliente Vinculado (Opcional)</label>
+          <input type="text" id="edit-tsk-cliente" list="clientes-datalist" />
+        </div>
+        <div class="form-group">
+          <label>Detalle / Título de la tarea</label>
+          <input type="text" id="edit-tsk-titulo" required />
+        </div>
+        <button type="submit" class="btn-primary btn-full">Guardar Cambios</button>
       </form>
     </div>
   </div>
