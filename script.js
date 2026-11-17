@@ -19,6 +19,7 @@ let activeRouteFilter = 'TODOS';
 let activeOrderFilter = 'PENDIENTE';
 let activeTaskFilter = 'PENDIENTES';
 let currentCart = [];
+let editOpCart = [];
 let lastDetectedOrder = null;
 let pendingBatchOps = [];
 
@@ -477,7 +478,6 @@ function getUnifiedOperationsList() {
     sortIndex: idx
   }));
 
-  // Agrega pedidos que todavía no fueron duplicados en db.movs con mismo orderId
   const orderEntries = (db.orders || []).map((o, idx) => {
     const parts = (o.cliente || '').split('|');
     const barberia = (parts[0] || '').trim().toUpperCase();
@@ -514,6 +514,218 @@ function setPapaDateToday() {
     input.value = todayISO();
     renderMovements();
   }
+}
+
+/* --- EDICIÓN COMPLETA DE CUALQUIER OPERACIÓN (VENTA, COBRO O PEDIDO) --- */
+function openEditOperationModal(id, isOrder) {
+  editOpCart = [];
+  document.getElementById('edit-op-id').value = id;
+  document.getElementById('edit-op-was-order').value = isOrder ? '1' : '0';
+
+  if (isOrder) {
+    const ord = (db.orders || []).find(o => o.id === id);
+    if (!ord) return;
+    document.getElementById('edit-op-modal-title').textContent = '✏️ Editar Pedido / Encargo';
+    document.getElementById('edit-op-fecha').value = ord.fecha || todayISO();
+    document.getElementById('edit-op-tipo').value = 'PEDIDO';
+    document.getElementById('edit-op-order-estado').value = ord.estado || 'PENDIENTE';
+    document.getElementById('edit-op-cliente').value = ord.cliente || '';
+    document.getElementById('edit-op-monto').value = Number(ord.totalEstimado) || 0;
+    document.getElementById('edit-op-medio').value = 'ENCARGO';
+    document.getElementById('edit-op-detalle').value = ord.detalleManual || '';
+    document.getElementById('edit-op-obs').value = ord.notas || '';
+    editOpCart = JSON.parse(JSON.stringify(ord.items || []));
+  } else {
+    const mov = (db.movs || []).find(m => m.id === id);
+    if (!mov) return;
+    document.getElementById('edit-op-modal-title').textContent = '✏️ Editar Operación';
+    document.getElementById('edit-op-fecha').value = mov.fecha || todayISO();
+    document.getElementById('edit-op-tipo').value = mov.tipo || 'VENTA FIADA';
+    document.getElementById('edit-op-order-estado').value = 'PENDIENTE';
+    document.getElementById('edit-op-cliente').value = mov.barbero ? `${mov.barberia} | ${mov.barbero}` : (mov.barberia || '');
+    document.getElementById('edit-op-monto').value = Number(mov.monto) || 0;
+    document.getElementById('edit-op-medio').value = mov.medio || 'EFECTIVO';
+    document.getElementById('edit-op-detalle').value = mov.detalle || '';
+    document.getElementById('edit-op-obs').value = mov.obs || '';
+    editOpCart = JSON.parse(JSON.stringify(mov.items || []));
+  }
+
+  toggleEditOpOrderStatus();
+  renderEditOpCart(false);
+  document.getElementById('edit-op-modal').style.display = 'flex';
+}
+
+function toggleEditOpOrderStatus() {
+  const tipo = document.getElementById('edit-op-tipo').value;
+  document.getElementById('edit-op-order-status-group').style.display = (tipo === 'PEDIDO') ? 'block' : 'none';
+  document.getElementById('edit-op-picker-box').style.display = (tipo === 'ABONO / PAGO') ? 'none' : 'block';
+}
+
+function addEditOpCartItem() {
+  const raw = document.getElementById('edit-op-prod-search').value.trim();
+  const qty = Math.max(1, Number(document.getElementById('edit-op-prod-qty').value) || 1);
+  if (!raw) return;
+
+  const code = raw.split('|')[0].trim().toUpperCase();
+  const prod = db.inv.find(p => p.codigo === code || p.producto.toUpperCase().includes(raw.toUpperCase()));
+  if (!prod) return showToast('Seleccioná un producto válido de la lista');
+
+  const existing = editOpCart.find(x => x.codigo === prod.codigo);
+  if (existing) existing.qty += qty;
+  else editOpCart.push({ codigo: prod.codigo, producto: prod.producto, qty, precio: Number(prod.venta) || 0 });
+
+  document.getElementById('edit-op-prod-search').value = '';
+  document.getElementById('edit-op-prod-qty').value = 1;
+  renderEditOpCart(true);
+}
+
+function removeEditOpCartItem(idx) {
+  editOpCart.splice(idx, 1);
+  renderEditOpCart(true);
+}
+
+function renderEditOpCart(recalculateFields = true) {
+  const list = document.getElementById('edit-op-cart-list');
+  if (!list) return;
+  if (!editOpCart.length) {
+    list.innerHTML = '<div class="muted" style="font-size:11.5px; margin-top:4px;">Sin productos vinculados (monto manual).</div>';
+    return;
+  }
+
+  let total = 0;
+  const details = [];
+  list.innerHTML = editOpCart.map((item, idx) => {
+    const sub = Number(item.qty) * Number(item.precio || 0);
+    total += sub;
+    details.push(`${item.qty}x ${item.producto}`);
+    return `
+      <div class="cart-chip">
+        <span><strong>${item.qty}x</strong> ${item.producto} (${fmtMoney(sub)})</span>
+        <button type="button" class="btn-icon" onclick="removeEditOpCartItem(${idx})" style="font-size:13px;">✕</button>
+      </div>
+    `;
+  }).join('');
+
+  if (recalculateFields) {
+    document.getElementById('edit-op-monto').value = total;
+    document.getElementById('edit-op-detalle').value = details.join(', ');
+  }
+}
+
+async function saveEditedOperation(e) {
+  e.preventDefault();
+  const id = document.getElementById('edit-op-id').value;
+  const wasOrder = document.getElementById('edit-op-was-order').value === '1';
+
+  const newFecha = document.getElementById('edit-op-fecha').value || todayISO();
+  const newTipo = document.getElementById('edit-op-tipo').value;
+  const newOrderEstado = document.getElementById('edit-op-order-estado').value;
+  const rawCli = document.getElementById('edit-op-cliente').value.trim();
+  const newMonto = Number(document.getElementById('edit-op-monto').value) || 0;
+  const newMedio = document.getElementById('edit-op-medio').value;
+  const newDetalle = document.getElementById('edit-op-detalle').value.trim();
+  const newObs = document.getElementById('edit-op-obs').value.trim();
+
+  let barberia = rawCli, barbero = '';
+  if (rawCli.includes('|')) {
+    const parts = rawCli.split('|');
+    barberia = parts[0].trim();
+    barbero = parts[1].trim();
+  }
+  const compositeCli = barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase();
+  const matchedCli = findClientByComposite(compositeCli);
+
+  // 1. Si era una venta previa con productos descontados, devolvemos ese stock primero
+  if (!wasOrder) {
+    const oldMov = db.movs.find(m => m.id === id);
+    if (oldMov && oldMov.items && oldMov.items.length && oldMov.tipo !== 'ABONO / PAGO') {
+      oldMov.items.forEach(it => {
+        const invItem = db.inv.find(x => x.codigo === it.codigo);
+        if (invItem) invItem.stock = Number(invItem.stock) + Number(it.qty);
+      });
+    }
+  }
+
+  // 2. Si el destino final es PEDIDO
+  if (newTipo === 'PEDIDO') {
+    if (!wasOrder) {
+      db.movs = db.movs.filter(m => m.id !== id);
+      db.orders.unshift({
+        id: 'ORD-' + Date.now(),
+        fecha: newFecha,
+        cliente: compositeCli,
+        ruta: matchedCli ? (matchedCli.ruta || 'A DEFINIR') : 'A DEFINIR',
+        items: [...editOpCart],
+        detalleManual: editOpCart.length ? '' : newDetalle,
+        totalEstimado: newMonto,
+        estado: newOrderEstado,
+        notas: newObs
+      });
+    } else {
+      const ord = db.orders.find(o => o.id === id);
+      if (ord) {
+        ord.fecha = newFecha;
+        ord.cliente = compositeCli;
+        ord.ruta = matchedCli ? (matchedCli.ruta || 'A DEFINIR') : (ord.ruta || 'A DEFINIR');
+        ord.items = [...editOpCart];
+        ord.detalleManual = editOpCart.length ? '' : newDetalle;
+        ord.totalEstimado = newMonto;
+        ord.estado = newOrderEstado;
+        ord.notas = newObs;
+      }
+    }
+  } else {
+    // 3. Si el destino final es VENTA o ABONO / PAGO
+    if (editOpCart.length && newTipo !== 'ABONO / PAGO') {
+      editOpCart.forEach(it => {
+        const invItem = db.inv.find(x => x.codigo === it.codigo);
+        if (invItem) invItem.stock = Number(invItem.stock) - Number(it.qty);
+      });
+    }
+
+    const finalDetalle = newDetalle || (editOpCart.length ? editOpCart.map(i => `${i.qty}x ${i.producto}`).join(', ') : newTipo);
+
+    if (wasOrder) {
+      db.orders = db.orders.filter(o => o.id !== id);
+      db.movs.push({
+        id: 'MOV-' + Date.now(),
+        fecha: newFecha,
+        barberia: barberia.toUpperCase(),
+        barbero: barbero.toUpperCase(),
+        tipo: newTipo,
+        detalle: finalDetalle,
+        medio: newMedio === 'ENCARGO' ? 'EFECTIVO' : newMedio,
+        monto: newMonto,
+        items: [...editOpCart],
+        obs: newObs
+      });
+    } else {
+      const mov = db.movs.find(m => m.id === id);
+      if (mov) {
+        mov.fecha = newFecha;
+        mov.barberia = barberia.toUpperCase();
+        mov.barbero = barbero.toUpperCase();
+        mov.tipo = newTipo;
+        mov.detalle = finalDetalle;
+        mov.medio = newMedio === 'ENCARGO' ? 'EFECTIVO' : newMedio;
+        mov.monto = newMonto;
+        mov.items = [...editOpCart];
+        mov.obs = newObs;
+      }
+    }
+  }
+
+  closeModal('edit-op-modal');
+  await persistData();
+  showToast('✅ Operación actualizada y saldos recalculados');
+}
+
+function deleteFromEditOpModal() {
+  const id = document.getElementById('edit-op-id').value;
+  const wasOrder = document.getElementById('edit-op-was-order').value === '1';
+  closeModal('edit-op-modal');
+  if (wasOrder) deleteOrder(id);
+  else deleteMovement(id);
 }
 
 /* --- AGENDA DE AVISOS WHATSAPP Y HABIT TRACKER --- */
@@ -572,6 +784,33 @@ async function saveScheduledTask(e) {
   showToast('📅 Tarea / aviso programado en la agenda');
 }
 
+function openEditTaskModal(id) {
+  const t = (db.tasks || []).find(x => x.id === id);
+  if (!t) return;
+  document.getElementById('edit-task-id').value = t.id;
+  document.getElementById('edit-task-fecha').value = t.fecha || todayISO();
+  document.getElementById('edit-task-tipo').value = t.tipo || 'AVISO PAGO';
+  document.getElementById('edit-task-cliente').value = t.cliente || '';
+  document.getElementById('edit-task-titulo').value = t.titulo || '';
+  document.getElementById('task-modal').style.display = 'flex';
+}
+
+async function saveEditedTask(e) {
+  e.preventDefault();
+  const id = document.getElementById('edit-task-id').value;
+  const t = (db.tasks || []).find(x => x.id === id);
+  if (!t) return;
+
+  t.fecha = document.getElementById('edit-task-fecha').value || todayISO();
+  t.tipo = document.getElementById('edit-task-tipo').value;
+  t.cliente = document.getElementById('edit-task-cliente').value.trim().toUpperCase();
+  t.titulo = document.getElementById('edit-task-titulo').value.trim();
+
+  closeModal('task-modal');
+  await persistData();
+  showToast('📅 Tarea actualizada');
+}
+
 async function toggleTaskDone(id) {
   const t = db.tasks.find(x => x.id === id);
   if (!t) return;
@@ -610,6 +849,17 @@ async function addHabitItem(e) {
   document.getElementById('habit-text').value = '';
   await persistData();
   showToast('Hábito agregado a la rutina semanal');
+}
+
+async function editHabitItem(id) {
+  const h = db.habits.find(x => x.id === id);
+  if (!h) return;
+  const updated = prompt('Editar hábito semanal:', h.text);
+  if (updated !== null && updated.trim()) {
+    h.text = updated.trim();
+    await persistData();
+    showToast('Hábito actualizado');
+  }
 }
 
 async function deleteHabitItem(id) {
@@ -659,9 +909,10 @@ function renderAgenda() {
             ${t.cliente ? `<div class="muted" style="font-size:12px; margin-top:2px;">💈 ${t.cliente}</div>` : ''}
           </div>
         </div>
-        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
-          ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa">WhatsApp</a>` : ''}
-          <button class="btn-icon" onclick="deleteScheduledTask('${t.id}')" title="Eliminar">🗑</button>
+        <div class="action-icon-group" style="flex-shrink:0;">
+          ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa">WA</a>` : ''}
+          <button class="btn-icon" onclick="openEditTaskModal('${t.id}')" title="Editar tarea">✏️</button>
+          <button class="btn-icon btn-icon-del" onclick="deleteScheduledTask('${t.id}')" title="Eliminar">🗑</button>
         </div>
       </div>
     `;
@@ -690,7 +941,10 @@ function renderAgenda() {
             <span class="habit-day-pill">${h.day}</span>
             <span style="font-size:12.5px; ${h.done ? 'text-decoration:line-through; opacity:0.6;' : ''}">${h.text}</span>
           </div>
-          <button class="btn-icon" onclick="deleteHabitItem('${h.id}')" style="font-size:14px;" title="Quitar">✕</button>
+          <div class="action-icon-group">
+            <button class="btn-icon" onclick="editHabitItem('${h.id}')" style="font-size:12px;" title="Editar">✏️</button>
+            <button class="btn-icon btn-icon-del" onclick="deleteHabitItem('${h.id}')" style="font-size:12px;" title="Quitar">✕</button>
+          </div>
         </div>
       `;
     }).join('');
@@ -955,7 +1209,7 @@ function renderBatchReview(ops) {
                   <option value="PEDIDO" ${op.tipo === 'PEDIDO' ? 'selected' : ''}>📦 PEDIDO</option>
                   <option value="TAREA" ${op.tipo === 'TAREA' ? 'selected' : ''}>📅 TAREA / AVISO</option>
                 </select>
-                <button type="button" class="btn-icon" onclick="removeBatchItem(${idx})" style="color:#fca5a5; font-size:15px;" title="Quitar">🗑</button>
+                <button type="button" class="btn-icon btn-icon-del" onclick="removeBatchItem(${idx})" style="font-size:15px;" title="Quitar">🗑</button>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <input type="text" list="clientes-datalist" value="${op.cliente || ''}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="BARBERIA | BARBERO" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
@@ -1322,7 +1576,7 @@ async function saveMovement(e) {
 function deleteMovement(id) {
   if (!confirm('¿Eliminar este movimiento? Se recalculará el saldo y se devolverá el stock si tenía productos.')) return;
   const mov = db.movs.find(m => m.id === id);
-  if (mov && mov.items && mov.items.length) {
+  if (mov && mov.items && mov.items.length && mov.tipo !== 'ABONO / PAGO') {
     mov.items.forEach(it => {
       const invItem = db.inv.find(x => x.codigo === it.codigo);
       if (invItem) invItem.stock = Number(invItem.stock) + Number(it.qty);
@@ -1367,7 +1621,7 @@ function renderMovements() {
     document.getElementById('papa-day-label').textContent = `Fecha consultada: ${selectedDay}`;
   }
 
-  // 2. RENDERIZAR HISTORIAL COMPLETO (VENTAS + COBROS + PEDIDOS)
+  // 2. RENDERIZAR HISTORIAL COMPLETO (VENTAS + COBROS + PEDIDOS) CON BOTONES EDITAR Y ELIMINAR
   const tbody = document.getElementById('all-movs-body');
   if (!tbody) return;
 
@@ -1395,9 +1649,7 @@ function renderMovements() {
     else if (m.tipo === 'VENTA FIADA') badgeClass = 'badge-amber';
     else if (m.isOrder) badgeClass = m.orderEstado === 'ENTREGADO' ? 'badge-green' : 'badge-purple';
 
-    const delAction = m.isOrder
-      ? `deleteOrder('${m.id}')`
-      : `deleteMovement('${m.id}')`;
+    const delAction = m.isOrder ? `deleteOrder('${m.id}')` : `deleteMovement('${m.id}')`;
 
     return `
       <tr>
@@ -1408,7 +1660,12 @@ function renderMovements() {
         </td>
         <td><span class="kpi-badge ${badgeClass}">${m.isOrder ? '📦 ' + m.tipo : m.tipo}</span></td>
         <td class="text-right font-bold">${fmtMoney(m.monto)}</td>
-        <td class="text-right"><button class="btn-icon" onclick="${delAction}" title="Eliminar">🗑</button></td>
+        <td class="text-right" style="white-space:nowrap;">
+          <div class="action-icon-group">
+            <button class="btn-icon" onclick="openEditOperationModal('${m.id}', ${m.isOrder})" title="Editar operación">✏️</button>
+            <button class="btn-icon btn-icon-del" onclick="${delAction}" title="Eliminar">🗑</button>
+          </div>
+        </td>
       </tr>
     `;
   }).join('') : `<tr><td colspan="5" class="text-center muted" style="padding:24px;">No hay operaciones registradas con este filtro.</td></tr>`;
@@ -1443,10 +1700,17 @@ function renderOrders() {
       : (o.detalleManual || o.notas || 'Pedido sin detalle');
     const isPending = o.estado === 'PENDIENTE';
     const actionBtns = isPending
-      ? `<button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA FIADA')" title="Entregar Fiado y descontar stock">Fiado</button>
-         <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar Contado y descontar stock">Contado</button>
-         <button class="btn-icon" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>`
-      : `<span class="kpi-badge badge-green">ENTREGADO</span> <button class="btn-icon" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>`;
+      ? `<div class="action-icon-group">
+           <button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA FIADA')" title="Entregar Fiado">Fiado</button>
+           <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar Contado">Contado</button>
+           <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
+           <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
+         </div>`
+      : `<div class="action-icon-group">
+           <span class="kpi-badge badge-green">ENTREGADO</span>
+           <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
+           <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
+         </div>`;
 
     return `
       <tr>
@@ -1558,7 +1822,7 @@ function deleteOrder(id) {
   showToast('Pedido eliminado');
 }
 
-/* --- CLIENTES --- */
+/* --- CLIENTES (CREAR, EDITAR Y ELIMINAR) --- */
 function renderClients() {
   const q = (document.getElementById('cli-search').value || '').toLowerCase();
   const filtered = db.clients.filter(c =>
@@ -1577,7 +1841,12 @@ function renderClients() {
         <td>${c.ruta || '-'}</td>
         <td><span class="tag-tier tier-${c.categoria}">${c.categoria}</span></td>
         <td class="text-right font-bold ${saldo > 0 ? 'text-amber' : 'text-green'}">${fmtMoney(saldo)}</td>
-        <td class="text-right"><button class="btn-sm btn-pay" onclick="openClientModal('${c.id}')">Editar</button></td>
+        <td class="text-right" style="white-space:nowrap;">
+          <div class="action-icon-group">
+            <button class="btn-icon" onclick="openClientModal('${c.id}')" title="Editar cliente">✏️</button>
+            <button class="btn-icon btn-icon-del" onclick="deleteClient('${c.id}')" title="Eliminar cliente">🗑</button>
+          </div>
+        </td>
       </tr>
     `;
   }).join('');
@@ -1587,7 +1856,7 @@ function openClientModal(id = null) {
   document.getElementById('client-modal').style.display = 'flex';
   if (id) {
     const c = db.clients.find(x => x.id === id);
-    document.getElementById('client-modal-title').textContent = 'Editar Cliente';
+    document.getElementById('client-modal-title').textContent = '✏️ Editar Cliente';
     document.getElementById('edit-cli-id').value = c.id;
     document.getElementById('cli-barberia').value = c.barberia;
     document.getElementById('cli-barbero').value = c.barbero;
@@ -1631,7 +1900,16 @@ function saveClient(e) {
   showToast('Cliente guardado');
 }
 
-/* --- INVENTARIO --- */
+function deleteClient(id) {
+  const c = db.clients.find(x => x.id === id);
+  if (!c) return;
+  if (!confirm(`¿Eliminar a ${c.barberia} (${c.barbero}) del directorio?`)) return;
+  db.clients = db.clients.filter(x => x.id !== id);
+  persistData();
+  showToast('Cliente eliminado');
+}
+
+/* --- INVENTARIO (CREAR, EDITAR Y ELIMINAR) --- */
 function renderInventory() {
   const q = (document.getElementById('inv-search').value || '').toLowerCase();
   const onlyLow = document.getElementById('filter-low-stock').checked;
@@ -1648,10 +1926,12 @@ function renderInventory() {
         <td class="font-bold">${i.producto}</td>
         <td class="text-center font-bold ${stClass}">${st} u.</td>
         <td class="text-right">${fmtMoney(i.venta)}</td>
-        <td class="text-right">
+        <td class="text-right" style="white-space:nowrap;">
           <div class="stock-stepper">
-            <button class="step-btn" onclick="adjustStock('${i.codigo}', -1)">-1</button>
-            <button class="step-btn" onclick="adjustStock('${i.codigo}', 1)">+1</button>
+            <button class="step-btn" onclick="adjustStock('${i.codigo}', -1)" title="Restar 1">-1</button>
+            <button class="step-btn" onclick="adjustStock('${i.codigo}', 1)" title="Sumar 1">+1</button>
+            <button class="btn-icon" onclick="openProductModal('${i.codigo}')" title="Editar artículo">✏️</button>
+            <button class="btn-icon btn-icon-del" onclick="deleteProduct('${i.codigo}')" title="Eliminar artículo">🗑</button>
           </div>
         </td>
       </tr>
@@ -1666,21 +1946,66 @@ function adjustStock(codigo, delta) {
   persistData();
 }
 
-function openProductModal() { document.getElementById('product-modal').style.display = 'flex'; }
+function openProductModal(codigo = null) {
+  document.getElementById('product-modal').style.display = 'flex';
+  if (codigo) {
+    const prod = db.inv.find(x => x.codigo === codigo);
+    if (!prod) return;
+    document.getElementById('product-modal-title').textContent = '✏️ Editar Artículo de Stock';
+    document.getElementById('edit-prod-original-code').value = prod.codigo;
+    document.getElementById('prod-codigo').value = prod.codigo;
+    document.getElementById('prod-nombre').value = prod.producto;
+    document.getElementById('prod-stock').value = Number(prod.stock) || 0;
+    document.getElementById('prod-venta').value = Number(prod.venta) || 0;
+  } else {
+    document.getElementById('product-modal-title').textContent = 'Nuevo Artículo de Stock';
+    document.getElementById('edit-prod-original-code').value = '';
+    document.getElementById('prod-codigo').value = '';
+    document.getElementById('prod-nombre').value = '';
+    document.getElementById('prod-stock').value = 10;
+    document.getElementById('prod-venta').value = 6000;
+  }
+}
 
 function saveProduct(e) {
   e.preventDefault();
-  db.inv.unshift({
-    codigo: 'ART-' + String(db.inv.length + 1).padStart(3, '0'),
-    producto: document.getElementById('prod-nombre').value.trim().toUpperCase(),
-    stock: Number(document.getElementById('prod-stock').value) || 0,
-    costo: 0,
-    venta: Number(document.getElementById('prod-venta').value) || 0
-  });
-  document.getElementById('prod-nombre').value = '';
+  const originalCode = document.getElementById('edit-prod-original-code').value;
+  const customCode = document.getElementById('prod-codigo').value.trim().toUpperCase();
+  const nombre = document.getElementById('prod-nombre').value.trim().toUpperCase();
+  const stock = Number(document.getElementById('prod-stock').value) || 0;
+  const venta = Number(document.getElementById('prod-venta').value) || 0;
+
+  if (originalCode) {
+    const prod = db.inv.find(x => x.codigo === originalCode);
+    if (prod) {
+      prod.codigo = customCode || originalCode;
+      prod.producto = nombre;
+      prod.stock = stock;
+      prod.venta = venta;
+    }
+    showToast('✅ Artículo actualizado');
+  } else {
+    db.inv.unshift({
+      codigo: customCode || ('ART-' + String(db.inv.length + 1).padStart(3, '0')),
+      producto: nombre,
+      stock,
+      costo: 0,
+      venta
+    });
+    showToast('✅ Producto agregado al stock');
+  }
+
   closeModal('product-modal');
   persistData();
-  showToast('Producto agregado al stock');
+}
+
+function deleteProduct(codigo) {
+  const prod = db.inv.find(x => x.codigo === codigo);
+  if (!prod) return;
+  if (!confirm(`¿Eliminar "${prod.producto}" (${prod.codigo}) del inventario?`)) return;
+  db.inv = db.inv.filter(x => x.codigo !== codigo);
+  persistData();
+  showToast('Artículo eliminado del inventario');
 }
 
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
