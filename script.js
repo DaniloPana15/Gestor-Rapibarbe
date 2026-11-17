@@ -1039,7 +1039,7 @@ function renderCart() {
   document.getElementById('mov-detalle').value = details.join(', ');
 }
 
-/* --- PROCESAMIENTO DE AUDIOS DE WHATSAPP Y TEXTO CON GEMINI --- */
+/* --- PROCESAMIENTO DE AUDIOS DE WHATSAPP Y TEXTO CON GEMINI + PARSER LOCAL --- */
 function setupAudioDropzone() {
   const zone = document.getElementById('audio-dropzone');
   if (!zone) return;
@@ -1104,7 +1104,7 @@ REGLAS CRÍTICAS DE DESGLOSE:
 5. Si el cliente no está en la lista, formatealo como "BARBERIA O ZONA | NOMBRE" (ej: "CELINA - GOYO | NELSON" o "BARBERIA LIAN | HECTOR") y completá "zona" si se menciona.
 6. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
 
-Devolvé ÚNICAMENTE JSON válido con esta estructura exacta:
+Devolvé ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
   "transcripcion": "resumen breve",
   "operaciones": [
@@ -1181,7 +1181,15 @@ async function callGeminiWithFallback(partsArray) {
       }
 
       const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+      const firstBracket = cleaned.indexOf('[');
       const firstBrace = cleaned.indexOf('{');
+
+      if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+        const lastBracket = cleaned.lastIndexOf(']');
+        const arr = JSON.parse(cleaned.slice(firstBracket, lastBracket + 1));
+        return { operaciones: arr };
+      }
+
       const lastBrace = cleaned.lastIndexOf('}');
       const jsonStr = (firstBrace !== -1 && lastBrace !== -1) ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
       return JSON.parse(jsonStr);
@@ -1191,6 +1199,181 @@ async function callGeminiWithFallback(partsArray) {
   }
 
   throw new Error(lastError);
+}
+
+/* ANALIZADOR LOCAL ESTRUCTURADO (RESPALDO INSTANTÁNEO SI FALLA LA RED O API) */
+function parseStructuredSummaryLocally(rawText) {
+  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const ops = [];
+  let inOrdersSection = false;
+
+  const parseArs = (str) => {
+    if (!str) return 0;
+    const clean = str.replace(/\./g, '').replace(/,/g, '');
+    const m = clean.match(/\d+/);
+    return m ? Number(m[0]) : 0;
+  };
+
+  for (const line of lines) {
+    const upper = line.toUpperCase();
+    if (upper.includes('PEDIDOS PENDIENTES') || upper.startsWith('2. PEDIDOS')) {
+      inOrdersSection = true;
+      continue;
+    }
+    if (upper.includes('VENTAS Y COBROS') || upper.startsWith('1.')) {
+      inOrdersSection = false;
+      continue;
+    }
+    if (upper.includes('TOTALES DEL DÍA') || upper.startsWith('TOTAL ')) continue;
+    if (!line.startsWith('-') && !line.includes(':')) continue;
+
+    const cleanLine = line.replace(/^[-•*]\s*/, '');
+    const colonIdx = cleanLine.indexOf(':');
+    if (colonIdx === -1) continue;
+
+    const rawWho = cleanLine.slice(0, colonIdx).trim();
+    const rest = cleanLine.slice(colonIdx + 1).trim();
+
+    let clienteFmt = rawWho.toUpperCase();
+    let zonaFmt = '';
+    const parenMatch = rawWho.match(/^([^(]+)\(([^)]+)\)/);
+    if (parenMatch) {
+      const nombre = parenMatch[1].trim().toUpperCase();
+      const lugar = parenMatch[2].trim().toUpperCase();
+      clienteFmt = `${lugar} | ${nombre}`;
+      if (lugar.includes('CELINA')) zonaFmt = 'VILLA CELINA';
+    } else {
+      const matched = db.clients.find(c =>
+        (c.barbero || '').toUpperCase() === clienteFmt ||
+        (c.barberia || '').toUpperCase() === clienteFmt
+      );
+      if (matched) clienteFmt = `${matched.barberia} | ${matched.barbero}`;
+    }
+
+    const segments = rest.split('|').map(s => s.trim());
+    const mainDesc = segments[0] || rest;
+    const paySeg = segments[1] || '';
+    const medio = rest.toLowerCase().includes('transferencia') ? 'TRANSFERENCIA' : 'EFECTIVO';
+
+    if (inOrdersSection) {
+      const totalM = rest.match(/Total(?:\s+pedido)?:\s*\$\s*([\d.]+)/i) || mainDesc.match(/\(\$\s*([\d.]+)\)/);
+      const senaM = rest.match(/Seña:\s*\$\s*([\d.]+)/i);
+      const totalVal = totalM ? parseArs(totalM[1]) : 0;
+      const senaVal = senaM ? parseArs(senaM[1]) : 0;
+
+      ops.push({
+        tipo: 'PEDIDO',
+        cliente: clienteFmt,
+        zona: zonaFmt,
+        items: [],
+        montoManual: totalVal,
+        sena: senaVal,
+        medio: 'EFECTIVO',
+        notas: rest
+      });
+      continue;
+    }
+
+    // Caso 1: Abono deuda anterior + mercadería nueva en la misma línea
+    const abonoPlusSale = mainDesc.match(/Abono\s+(?:deuda\s*)?\(\$\s*([\d.]+)\)\s*\+\s*(.+)/i);
+    if (abonoPlusSale) {
+      const abonoVal = parseArs(abonoPlusSale[1]);
+      const prodPart = abonoPlusSale[2].trim();
+      const prodPriceM = prodPart.match(/\(\$\s*([\d.]+)\)/);
+      const prodVal = prodPriceM ? parseArs(prodPriceM[1]) : 0;
+
+      if (abonoVal > 0) {
+        ops.push({
+          tipo: 'ABONO / PAGO',
+          cliente: clienteFmt,
+          zona: zonaFmt,
+          items: [],
+          montoManual: abonoVal,
+          medio,
+          notas: 'Abono deuda anterior'
+        });
+      }
+      if (prodVal > 0) {
+        ops.push({
+          tipo: 'VENTA FIADA',
+          cliente: clienteFmt,
+          zona: zonaFmt,
+          items: [],
+          montoManual: prodVal,
+          medio: 'CUENTA CORRIENTE',
+          notas: prodPart
+        });
+      }
+      continue;
+    }
+
+    // Caso 2: Tenía deuda + producto, y abonó un monto
+    const deudaPlusProd = mainDesc.match(/Tenía deuda de\s*\$\s*([\d.]+)\s*\+\s*(.+)/i);
+    if (deudaPlusProd) {
+      const prodPart = deudaPlusProd[2].trim();
+      const prodPriceM = prodPart.match(/\(\$\s*([\d.]+)\)/);
+      const prodVal = prodPriceM ? parseArs(prodPriceM[1]) : 0;
+      const abonoM = paySeg.match(/Abonó:\s*\$\s*([\d.]+)/i);
+      const abonoVal = abonoM ? parseArs(abonoM[1]) : 0;
+
+      if (prodVal > 0) {
+        ops.push({
+          tipo: 'VENTA FIADA',
+          cliente: clienteFmt,
+          zona: zonaFmt,
+          items: [],
+          montoManual: prodVal,
+          medio: 'CUENTA CORRIENTE',
+          notas: prodPart
+        });
+      }
+      if (abonoVal > 0) {
+        ops.push({
+          tipo: 'ABONO / PAGO',
+          cliente: clienteFmt,
+          zona: zonaFmt,
+          items: [],
+          montoManual: abonoVal,
+          medio,
+          notas: 'Abono en ruta'
+        });
+      }
+      continue;
+    }
+
+    // Caso 3: Solo Abono / Seña
+    if (/^(Abono|Seña)/i.test(mainDesc)) {
+      const amountM = rest.match(/(?:Abonó:|=\s*)\$\s*([\d.]+)/i) || rest.match(/\$\s*([\d.]+)/);
+      const val = amountM ? parseArs(amountM[1]) : 0;
+      ops.push({
+        tipo: 'ABONO / PAGO',
+        cliente: clienteFmt,
+        zona: zonaFmt,
+        items: [],
+        montoManual: val,
+        medio,
+        notas: rest
+      });
+      continue;
+    }
+
+    // Caso 4: Venta Contado o Venta Fiada
+    const eqM = mainDesc.match(/=\s*\$\s*([\d.]+)/) || mainDesc.match(/\$\s*([\d.]+)/);
+    const saleVal = eqM ? parseArs(eqM[1]) : 0;
+    const isContado = /pagado completo|contado|efectivo/i.test(paySeg) && !/pendiente|debe:\s*\$\s*[1-9]/i.test(rest);
+
+    ops.push({
+      tipo: isContado ? 'VENTA CONTADO' : 'VENTA FIADA',
+      cliente: clienteFmt,
+      zona: zonaFmt,
+      items: [],
+      montoManual: saleVal,
+      medio: isContado ? medio : 'CUENTA CORRIENTE',
+      notas: mainDesc
+    });
+  }
+
+  return ops;
 }
 
 function processWhatsAppAudioFile(file) {
@@ -1220,7 +1403,7 @@ function processWhatsAppAudioFile(file) {
         document.getElementById('voice-input').value = parsed.transcripcion;
       }
 
-      const ops = Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed];
+      const ops = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed]);
 
       if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
         closeBatchReview();
@@ -1242,9 +1425,9 @@ function processWhatsAppAudioFile(file) {
 
 function renderBatchReview(ops) {
   pendingBatchOps = ops.map(op => {
-    let total = Number(op.montoManual) || 0;
-    const resolvedItems = [];
-    if (op.items && op.items.length) {
+    let total = Number(op.montoManual ?? op.totalCalculado) || 0;
+    const resolvedItems = Array.isArray(op.resolvedItems) ? [...op.resolvedItems] : [];
+    if (!resolvedItems.length && op.items && op.items.length) {
       total = 0;
       op.items.forEach(it => {
         const prod = db.inv.find(p => p.codigo === it.codigo);
@@ -1311,6 +1494,7 @@ function renderBatchReview(ops) {
       <button type="button" class="btn-primary btn-full" style="margin-top:12px;" onclick="saveAllBatchOperations()">✅ Confirmar y Guardar Todas (${pendingBatchOps.length})</button>
     </div>
   `;
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   showToast(`Se detectaron ${pendingBatchOps.length} acciones. Revisalas y tocá Guardar Todas.`);
 }
 
@@ -1534,27 +1718,46 @@ async function parseSmartCommand() {
   const text = document.getElementById('voice-input').value.trim();
   if (!text) return showToast('Escribí, pegá un resumen o subí primero un audio');
 
+  const dropHint = document.getElementById('drop-hint-text');
+  if (dropHint) dropHint.innerHTML = '⏳ Analizando resumen con IA...';
+
   if (config.geminiKey) {
     showToast('Interpretando resumen con IA...');
     try {
       const prompt = buildSmartExtractionPrompt(text);
       const parsed = await callGeminiWithFallback([{ text: prompt }]);
-      const ops = Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed];
+      const ops = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed]);
 
       if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
         closeBatchReview();
         applyParsedCommandToForm(ops[0] || {});
-      } else {
+      } else if (ops.length > 0) {
         document.getElementById('detected-order-banner').style.display = 'none';
         renderBatchReview(ops);
       }
+      if (dropHint) dropHint.innerHTML = `✅ ${ops.length} acciones listas para confirmar abajo:`;
       return;
     } catch (err) {
       console.error('Error Gemini Texto:', err);
+      const localOps = parseStructuredSummaryLocally(text);
+      if (localOps.length > 0) {
+        document.getElementById('detected-order-banner').style.display = 'none';
+        renderBatchReview(localOps);
+        if (dropHint) dropHint.innerHTML = `✅ ${localOps.length} acciones desglosadas automáticamente:`;
+        return;
+      }
+      if (dropHint) dropHint.innerHTML = `❌ Error Gemini: ${err.message}`;
       showToast(`Error Gemini: ${err.message}`);
       return;
     }
   } else {
+    const localOps = parseStructuredSummaryLocally(text);
+    if (localOps.length > 0) {
+      document.getElementById('detected-order-banner').style.display = 'none';
+      renderBatchReview(localOps);
+      if (dropHint) dropHint.innerHTML = `✅ ${localOps.length} acciones desglosadas:`;
+      return;
+    }
     showToast('Falta tu Gemini API Key en Nube & IA');
     switchTab('nube');
   }
