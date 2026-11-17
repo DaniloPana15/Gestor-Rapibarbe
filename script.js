@@ -26,6 +26,14 @@ let pendingBatchOps = [];
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const todayISO = () => new Date().toISOString().split('T')[0];
 
+function escapeAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   applyMagicLinkFromUrl();
@@ -411,7 +419,6 @@ function renderDashboard() {
     `;
   }).join('') : `<tr><td colspan="4" class="text-center muted" style="padding:24px;">No hay deudas pendientes en este filtro.</td></tr>`;
 
-  // TAREAS DE HOY EN EL DASHBOARD
   const today = todayISO();
   const todayTasks = (db.tasks || []).filter(t => !t.done && t.fecha <= today).slice(0, 4);
   const dashTasksEl = document.getElementById('dash-today-tasks');
@@ -1032,7 +1039,7 @@ function renderCart() {
   document.getElementById('mov-detalle').value = details.join(', ');
 }
 
-/* --- PROCESAMIENTO DE AUDIOS DE WHATSAPP (DRAG & DROP O ARCHIVO) --- */
+/* --- PROCESAMIENTO DE AUDIOS DE WHATSAPP Y TEXTO CON GEMINI --- */
 function setupAudioDropzone() {
   const zone = document.getElementById('audio-dropzone');
   if (!zone) return;
@@ -1091,31 +1098,77 @@ REGLAS CRÍTICAS DE DESGLOSE:
    - Operación B: tipo "VENTA FIADA" por la mercadería nueva llevada.
 2. Si un cliente deja SEÑA por un PEDIDO pendiente (ej: "Richard: 1 silla $1.000.000, seña $100.000, resta $900.000"), generá:
    - Operación A: tipo "PEDIDO", montoManual: 1000000, sena: 100000, notas: "1 silla de barbería · Seña $100.000 · Resta $900.000".
-   - Operación B: tipo "ABONO / PAGO" (o "VENTA CONTADO") por $100.000 con notas "Seña por pedido (silla de barbería)" SOLO si no figura ya aparte como cobro del día, para reflejar la caja real cobrada hoy sin duplicar.
-3. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy", "Mercadería entregada hoy" o "Total en pedidos por entregar", porque el sistema los calcula sumando cada operación.
+   - Operación B: tipo "ABONO / PAGO" por $100.000 con notas "Seña por pedido (silla de barbería)" SOLO si no figura ya aparte como cobro del día.
+3. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy", "Mercadería entregada hoy" o "Total en pedidos por entregar".
 4. Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
 5. Si el cliente no está en la lista, formatealo como "BARBERIA O ZONA | NOMBRE" (ej: "CELINA - GOYO | NELSON" o "BARBERIA LIAN | HECTOR") y completá "zona" si se menciona.
 6. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
 
-Devolvé ÚNICAMENTE JSON válido sin markdown con esta estructura exacta:
+Devolvé ÚNICAMENTE JSON válido con esta estructura exacta:
 {
-  "transcripcion": "transcripción o resumen breve",
+  "transcripcion": "resumen breve",
   "operaciones": [
     {
-      "tipo": "VENTA FIADA" | "VENTA CONTADO" | "ABONO / PAGO" | "PEDIDO" | "TAREA",
-      "subtipoTarea": "AVISO PAGO" | "GRABAR POLO" | "AVISO RUTA" | "GENERAL",
+      "tipo": "VENTA FIADA",
+      "subtipoTarea": "AVISO PAGO",
       "fechaProgramada": "${todayISO()}",
       "cliente": "BARBERIA | BARBERO",
       "zona": "",
-      "items": [{"codigo": "ART-XXX", "qty": 1}],
+      "items": [],
       "montoManual": 0,
       "sena": 0,
       "abonoParcial": 0,
-      "medio": "EFECTIVO" | "TRANSFERENCIA" | "CUENTA CORRIENTE",
+      "medio": "EFECTIVO",
       "notas": "detalle exacto de productos o concepto"
     }
   ]
 }`;
+}
+
+async function callGeminiWithFallback(partsArray) {
+  const apiKey = (config.geminiKey || '').trim();
+  if (!apiKey) throw new Error('Falta configurar la Gemini API Key en Nube & IA.');
+
+  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+  let lastError = 'Error desconocido';
+
+  for (const model of models) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: partsArray }],
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        lastError = (data.error && data.error.message) ? data.error.message : `HTTP ${res.status}`;
+        continue;
+      }
+
+      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      if (!rawText) {
+        lastError = 'Respuesta vacía de Gemini';
+        continue;
+      }
+
+      const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      const jsonStr = (firstBrace !== -1 && lastBrace !== -1) ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
+      return JSON.parse(jsonStr);
+    } catch (err) {
+      lastError = err.message || String(err);
+    }
+  }
+
+  throw new Error(lastError);
 }
 
 function processWhatsAppAudioFile(file) {
@@ -1136,24 +1189,10 @@ function processWhatsAppAudioFile(file) {
       const mimeType = getAudioMimeType(file);
       const prompt = buildSmartExtractionPrompt();
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: mimeType, data: base64Data } }
-            ]
-          }]
-        })
-      });
-
-      const data = await res.json();
-      if (!data.candidates || !data.candidates[0]) throw new Error('Sin respuesta de Gemini');
-
-      const rawJson = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(rawJson);
+      const parsed = await callGeminiWithFallback([
+        { text: prompt },
+        { inline_data: { mime_type: mimeType, data: base64Data } }
+      ]);
 
       if (parsed.transcripcion) {
         document.getElementById('voice-input').value = parsed.transcripcion;
@@ -1171,9 +1210,9 @@ function processWhatsAppAudioFile(file) {
 
       if (dropHint) dropHint.innerHTML = `✅ Audio procesado (${ops.length} ${ops.length === 1 ? 'acción detectada' : 'acciones detectadas'})`;
     } catch (err) {
-      console.error(err);
-      if (dropHint) dropHint.innerHTML = `❌ Error al procesar el audio. Verificá tu Gemini API Key.`;
-      showToast('Error al procesar el audio con Gemini.');
+      console.error('Error Gemini Audio:', err);
+      if (dropHint) dropHint.innerHTML = `❌ Error IA: ${err.message}`;
+      showToast(`Error IA: ${err.message}`);
     }
   };
   reader.readAsDataURL(file);
@@ -1197,6 +1236,7 @@ function renderBatchReview(ops) {
     }
     return {
       ...op,
+      cliente: op.cliente || 'CLIENTE SIN NOMBRE',
       zona: op.zona || '',
       sena: Number(op.sena) || 0,
       fechaProgramada: op.fechaProgramada || todayISO(),
@@ -1211,10 +1251,10 @@ function renderBatchReview(ops) {
   box.innerHTML = `
     <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.45); border-radius:14px; padding:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <strong style="color:#6ee7b7; font-size:13px;">📋 ${pendingBatchOps.length} Acciones Detectadas</strong>
+        <strong style="color:#6ee7b7; font-size:13px;">📋 ${pendingBatchOps.length} Acciones Detectadas (se guardarán en Historial)</strong>
         <button type="button" class="btn-icon" onclick="closeBatchReview()" title="Cancelar lote">✕</button>
       </div>
-      <div style="display:flex; flex-direction:column; gap:8px; max-height:380px; overflow-y:auto; padding-right:2px;">
+      <div style="display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:2px;">
         ${pendingBatchOps.map((op, idx) => {
           const isTask = op.tipo === 'TAREA';
           const isOrder = op.tipo === 'PEDIDO';
@@ -1235,13 +1275,13 @@ function renderBatchReview(ops) {
                 <button type="button" class="btn-icon btn-icon-del" onclick="removeBatchItem(${idx})" style="font-size:15px;" title="Quitar">🗑</button>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <input type="text" list="clientes-datalist" value="${op.cliente || ''}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="BARBERIA | BARBERO" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
+                <input type="text" list="clientes-datalist" value="${escapeAttr(op.cliente)}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="BARBERIA | BARBERO" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
                 ${isTask
-                  ? `<input type="date" value="${op.fechaProgramada}" onchange="pendingBatchOps[${idx}].fechaProgramada = this.value" style="width:130px; padding:6px 8px; font-size:12px;" />`
+                  ? `<input type="date" value="${escapeAttr(op.fechaProgramada)}" onchange="pendingBatchOps[${idx}].fechaProgramada = this.value" style="width:130px; padding:6px 8px; font-size:12px;" />`
                   : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:110px; padding:6px 8px; text-align:right; font-weight:700;" />`
                 }
               </div>
-              <input type="text" value="${itemsDesc}" onchange="pendingBatchOps[${idx}].notas = this.value" style="padding:5px 8px; font-size:11.5px;" />
+              <input type="text" value="${escapeAttr(itemsDesc)}" onchange="pendingBatchOps[${idx}].notas = this.value" style="padding:5px 8px; font-size:11.5px;" />
             </div>
           `;
         }).join('')}
@@ -1298,7 +1338,7 @@ async function saveAllBatchOperations() {
   const fecha = document.getElementById('mov-fecha').value || todayISO();
 
   pendingBatchOps.forEach((op, index) => {
-    const rawCli = (op.cliente || '').trim();
+    const rawCli = (op.cliente || 'CLIENTE SIN NOMBRE').trim();
     let barberia = rawCli, barbero = '';
     if (rawCli.includes('|')) {
       const parts = rawCli.split('|');
@@ -1314,7 +1354,7 @@ async function saveAllBatchOperations() {
         fecha: op.fechaProgramada || fecha,
         tipo: op.subtipoTarea || 'AVISO PAGO',
         cliente: rawCli.toUpperCase(),
-        titulo: op.notas || 'Tarea programada por audio',
+        titulo: op.notas || 'Tarea programada por IA',
         done: false
       });
     } else if (op.tipo === 'PEDIDO') {
@@ -1476,15 +1516,7 @@ async function parseSmartCommand() {
     showToast('Interpretando resumen con IA...');
     try {
       const prompt = buildSmartExtractionPrompt(text);
-
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      const data = await res.json();
-      const rawJson = data.candidates[0].content.parts[0].text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(rawJson);
+      const parsed = await callGeminiWithFallback([{ text: prompt }]);
       const ops = Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed];
 
       if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
@@ -1496,38 +1528,14 @@ async function parseSmartCommand() {
       }
       return;
     } catch (err) {
-      showToast('Fallo IA, aplicando lectura rápida local...');
+      console.error('Error Gemini Texto:', err);
+      showToast(`Error Gemini: ${err.message}`);
+      return;
     }
-  }
-
-  currentCart = [];
-  renderCart();
-  const lower = text.toLowerCase();
-  if (lower.includes('pedido') || lower.includes('encarg') || lower.includes('llevarle')) {
-    document.getElementById('mov-tipo').value = 'PEDIDO';
-  } else if (lower.includes('abon') || (lower.includes('pagó') && !lower.includes('llev') && !lower.includes('vend'))) {
-    document.getElementById('mov-tipo').value = 'ABONO / PAGO';
-  } else if (lower.includes('contado')) {
-    document.getElementById('mov-tipo').value = 'VENTA CONTADO';
   } else {
-    document.getElementById('mov-tipo').value = 'VENTA FIADA';
+    showToast('Falta tu Gemini API Key en Nube & IA');
+    switchTab('nube');
   }
-  toggleProductPicker();
-
-  const matchedCli = db.clients.find(c =>
-    (c.barberia && lower.includes(c.barberia.toLowerCase())) ||
-    (c.barbero && c.barbero.length > 3 && lower.includes(c.barbero.toLowerCase()))
-  );
-  if (matchedCli) {
-    document.getElementById('mov-cliente-search').value = `${matchedCli.barberia} | ${matchedCli.barbero}`;
-  }
-
-  const nums = text.match(/\d{4,}/g);
-  if (nums && nums.length) {
-    document.getElementById('mov-monto').value = nums[0];
-  }
-  document.getElementById('mov-detalle').value = text;
-  showToast('Datos pre-cargados. Verificá cliente y productos.');
 }
 
 async function saveMovement(e) {
