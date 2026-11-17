@@ -1125,11 +1125,33 @@ Devolvé ÚNICAMENTE JSON válido con esta estructura exacta:
 }`;
 }
 
+async function getAvailableGeminiModels(apiKey) {
+  const preferred = ['gemini-3.8-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash', 'gemini-flash-latest'];
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
+    if (!res.ok) return preferred;
+    const data = await res.json();
+    const valid = (data.models || [])
+      .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+      .map(m => m.name.replace(/^models\//, ''))
+      .filter(name => name.includes('flash') && !name.includes('image') && !name.includes('audio') && !name.includes('tts'));
+
+    if (!valid.length) return preferred;
+
+    const ordered = [];
+    preferred.forEach(p => { if (valid.includes(p)) ordered.push(p); });
+    valid.forEach(v => { if (!ordered.includes(v)) ordered.push(v); });
+    return ordered;
+  } catch (e) {
+    return preferred;
+  }
+}
+
 async function callGeminiWithFallback(partsArray) {
   const apiKey = (config.geminiKey || '').trim();
   if (!apiKey) throw new Error('Falta configurar la Gemini API Key en Nube & IA.');
 
-  const models = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash'];
+  const models = await getAvailableGeminiModels(apiKey);
   let lastError = 'Error desconocido';
 
   for (const model of models) {
