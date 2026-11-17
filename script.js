@@ -486,15 +486,19 @@ function getUnifiedOperationsList() {
       ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
       : (o.detalleManual || o.notas || 'Pedido encargado');
 
+    const senaNum = Number(o.sena) || 0;
+    const totalNum = Number(o.totalEstimado) || 0;
+    const senaTag = senaNum > 0 ? ` · Seña: ${fmtMoney(senaNum)} (Resta: ${fmtMoney(Math.max(0, totalNum - senaNum))})` : '';
+
     return {
       id: o.id,
       fecha: o.fecha || todayISO(),
       barberia,
       barbero,
       tipo: o.estado === 'ENTREGADO' ? 'PEDIDO (ENTREGADO)' : 'PEDIDO',
-      detalle: desc + (o.notas ? ` (${o.notas})` : ''),
+      detalle: desc + senaTag + (o.notas ? ` (${o.notas})` : ''),
       medio: 'ENCARGO',
-      monto: Number(o.totalEstimado) || 0,
+      monto: totalNum,
       isOrder: true,
       orderEstado: o.estado,
       sortIndex: 100000 + idx
@@ -635,7 +639,6 @@ async function saveEditedOperation(e) {
   const compositeCli = barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase();
   const matchedCli = findClientByComposite(compositeCli);
 
-  // 1. Si era una venta previa con productos descontados, devolvemos ese stock primero
   if (!wasOrder) {
     const oldMov = db.movs.find(m => m.id === id);
     if (oldMov && oldMov.items && oldMov.items.length && oldMov.tipo !== 'ABONO / PAGO') {
@@ -646,7 +649,6 @@ async function saveEditedOperation(e) {
     }
   }
 
-  // 2. Si el destino final es PEDIDO
   if (newTipo === 'PEDIDO') {
     if (!wasOrder) {
       db.movs = db.movs.filter(m => m.id !== id);
@@ -658,6 +660,7 @@ async function saveEditedOperation(e) {
         items: [...editOpCart],
         detalleManual: editOpCart.length ? '' : newDetalle,
         totalEstimado: newMonto,
+        sena: 0,
         estado: newOrderEstado,
         notas: newObs
       });
@@ -675,7 +678,6 @@ async function saveEditedOperation(e) {
       }
     }
   } else {
-    // 3. Si el destino final es VENTA o ABONO / PAGO
     if (editOpCart.length && newTipo !== 'ABONO / PAGO') {
       editOpCart.forEach(it => {
         const invItem = db.inv.find(x => x.codigo === it.codigo);
@@ -736,7 +738,11 @@ function findClientByComposite(rawCli) {
   const b2 = (parts[1] || '').trim().toUpperCase();
   return db.clients.find(c =>
     (c.barberia || '').toUpperCase() === b1 && (!b2 || (c.barbero || '').toUpperCase() === b2)
-  ) || db.clients.find(c => (c.barberia || '').toUpperCase() === b1 || (c.barbero || '').toUpperCase() === b1);
+  ) || db.clients.find(c =>
+    (c.barberia || '').toUpperCase() === b1 ||
+    (c.barbero || '').toUpperCase() === b1 ||
+    (b2 && (c.barbero || '').toUpperCase() === b2)
+  );
 }
 
 function autoFillTaskTitle() {
@@ -1068,6 +1074,50 @@ function getAudioMimeType(file) {
   return file.type || 'audio/ogg';
 }
 
+function buildSmartExtractionPrompt(extraText = '') {
+  const cliList = db.clients.map(c => `${c.barberia} | ${c.barbero} (${c.zona})`).join('; ');
+  const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
+
+  return `Sos el asistente administrativo de Rapibarbe (insumos de barbería en Argentina). Fecha de hoy: ${todayISO()}.
+Analizá este audio o resumen estructurado de ventas, cobros, pedidos y tareas de Freddy y convertilo en una lista plana de operaciones individuales:
+${extraText ? `"""\n${extraText}\n"""` : ''}
+
+Clientes existentes: [${cliList}]
+Productos en stock: [${invList}]
+
+REGLAS CRÍTICAS DE DESGLOSE:
+1. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva (ej: "Abono $30.000 + 1 shaver crédito $16.000" o "Tenía deuda $65.000 + shaver $40.000, abonó $40.000"), separalo en DOS operaciones en el array:
+   - Operación A: tipo "ABONO / PAGO" por el monto abonado.
+   - Operación B: tipo "VENTA FIADA" por la mercadería nueva llevada.
+2. Si un cliente deja SEÑA por un PEDIDO pendiente (ej: "Richard: 1 silla $1.000.000, seña $100.000, resta $900.000"), generá:
+   - Operación A: tipo "PEDIDO", montoManual: 1000000, sena: 100000, notas: "1 silla de barbería · Seña $100.000 · Resta $900.000".
+   - Operación B: tipo "ABONO / PAGO" (o "VENTA CONTADO") por $100.000 con notas "Seña por pedido (silla de barbería)" SOLO si no figura ya aparte como cobro del día, para reflejar la caja real cobrada hoy sin duplicar.
+3. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy", "Mercadería entregada hoy" o "Total en pedidos por entregar", porque el sistema los calcula sumando cada operación.
+4. Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
+5. Si el cliente no está en la lista, formatealo como "BARBERIA O ZONA | NOMBRE" (ej: "CELINA - GOYO | NELSON" o "BARBERIA LIAN | HECTOR") y completá "zona" si se menciona.
+6. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
+
+Devolvé ÚNICAMENTE JSON válido sin markdown con esta estructura exacta:
+{
+  "transcripcion": "transcripción o resumen breve",
+  "operaciones": [
+    {
+      "tipo": "VENTA FIADA" | "VENTA CONTADO" | "ABONO / PAGO" | "PEDIDO" | "TAREA",
+      "subtipoTarea": "AVISO PAGO" | "GRABAR POLO" | "AVISO RUTA" | "GENERAL",
+      "fechaProgramada": "${todayISO()}",
+      "cliente": "BARBERIA | BARBERO",
+      "zona": "",
+      "items": [{"codigo": "ART-XXX", "qty": 1}],
+      "montoManual": 0,
+      "sena": 0,
+      "abonoParcial": 0,
+      "medio": "EFECTIVO" | "TRANSFERENCIA" | "CUENTA CORRIENTE",
+      "notas": "detalle exacto de productos o concepto"
+    }
+  ]
+}`;
+}
+
 function processWhatsAppAudioFile(file) {
   if (!config.geminiKey) {
     showToast('Configurá tu Gemini API Key en "Nube & IA" para leer audios de WhatsApp.');
@@ -1084,38 +1134,7 @@ function processWhatsAppAudioFile(file) {
     try {
       const base64Data = reader.result.split(',')[1];
       const mimeType = getAudioMimeType(file);
-
-      const cliList = db.clients.map(c => `${c.barberia} | ${c.barbero} (${c.zona})`).join('; ');
-      const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
-
-      const prompt = `Sos el asistente administrativo de Rapibarbe (insumos de barbería en Argentina). Fecha de hoy: ${todayISO()}.
-Escuchá este audio de WhatsApp de Freddy. Puede contener UNA o MÚLTIPLES operaciones mezcladas:
-- Ventas fiadas ("VENTA FIADA")
-- Ventas contado ("VENTA CONTADO")
-- Cobros o abonos ("ABONO / PAGO")
-- Pedidos de productos para entregar luego ("PEDIDO")
-- Tareas o avisos programados para un día ("TAREA": por ejemplo avisar por WhatsApp a un barbero que pague, grabar video con polo barbero a un cliente, avisar visita).
-
-Clientes válidos: [${cliList}]
-Productos válidos: [${invList}]
-
-Devolvé ÚNICAMENTE JSON válido sin markdown con esta estructura exacta:
-{
-  "transcripcion": "transcripción completa y fiel del audio",
-  "operaciones": [
-    {
-      "tipo": "VENTA FIADA" | "VENTA CONTADO" | "ABONO / PAGO" | "PEDIDO" | "TAREA",
-      "subtipoTarea": "AVISO PAGO" | "GRABAR POLO" | "AVISO RUTA" | "GENERAL",
-      "fechaProgramada": "YYYY-MM-DD",
-      "cliente": "BARBERIA | BARBERO",
-      "items": [{"codigo": "ART-XXX", "qty": 1}],
-      "montoManual": 0,
-      "abonoParcial": 0,
-      "medio": "EFECTIVO" | "TRANSFERENCIA" | "CUENTA CORRIENTE",
-      "notas": "detalle o descripción de la tarea"
-    }
-  ]
-}`;
+      const prompt = buildSmartExtractionPrompt();
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`, {
         method: 'POST',
@@ -1178,6 +1197,8 @@ function renderBatchReview(ops) {
     }
     return {
       ...op,
+      zona: op.zona || '',
+      sena: Number(op.sena) || 0,
       fechaProgramada: op.fechaProgramada || todayISO(),
       subtipoTarea: op.subtipoTarea || 'AVISO PAGO',
       resolvedItems,
@@ -1193,9 +1214,10 @@ function renderBatchReview(ops) {
         <strong style="color:#6ee7b7; font-size:13px;">📋 ${pendingBatchOps.length} Acciones Detectadas</strong>
         <button type="button" class="btn-icon" onclick="closeBatchReview()" title="Cancelar lote">✕</button>
       </div>
-      <div style="display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; flex-direction:column; gap:8px; max-height:380px; overflow-y:auto; padding-right:2px;">
         ${pendingBatchOps.map((op, idx) => {
           const isTask = op.tipo === 'TAREA';
+          const isOrder = op.tipo === 'PEDIDO';
           const itemsDesc = op.resolvedItems.length
             ? op.resolvedItems.map(i => `${i.qty}x ${i.producto}`).join(', ')
             : (op.notas || 'Movimiento directo');
@@ -1209,13 +1231,14 @@ function renderBatchReview(ops) {
                   <option value="PEDIDO" ${op.tipo === 'PEDIDO' ? 'selected' : ''}>📦 PEDIDO</option>
                   <option value="TAREA" ${op.tipo === 'TAREA' ? 'selected' : ''}>📅 TAREA / AVISO</option>
                 </select>
+                ${isOrder ? `<span style="font-size:11px; color:#fcd34d;">Seña: $<input type="number" value="${op.sena || 0}" onchange="pendingBatchOps[${idx}].sena = Number(this.value)" style="width:76px; padding:3px 6px; font-size:11px; display:inline-block;" /></span>` : ''}
                 <button type="button" class="btn-icon btn-icon-del" onclick="removeBatchItem(${idx})" style="font-size:15px;" title="Quitar">🗑</button>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <input type="text" list="clientes-datalist" value="${op.cliente || ''}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="BARBERIA | BARBERO" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
                 ${isTask
                   ? `<input type="date" value="${op.fechaProgramada}" onchange="pendingBatchOps[${idx}].fechaProgramada = this.value" style="width:130px; padding:6px 8px; font-size:12px;" />`
-                  : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:100px; padding:6px 8px; text-align:right; font-weight:700;" />`
+                  : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:110px; padding:6px 8px; text-align:right; font-weight:700;" />`
                 }
               </div>
               <input type="text" value="${itemsDesc}" onchange="pendingBatchOps[${idx}].notas = this.value" style="padding:5px 8px; font-size:11.5px;" />
@@ -1241,6 +1264,33 @@ function closeBatchReview() {
   if (box) box.style.display = 'none';
 }
 
+function ensureClientExists(barberiaStr, barberoStr, zonaStr = '') {
+  const b1 = (barberiaStr || '').trim().toUpperCase();
+  const b2 = (barberoStr || '').trim().toUpperCase();
+  if (!b1) return;
+
+  const exists = db.clients.some(c =>
+    ((c.barberia || '').toUpperCase() === b1 && (c.barbero || '').toUpperCase() === (b2 || b1)) ||
+    (!b2 && ((c.barbero || '').toUpperCase() === b1 || (c.barberia || '').toUpperCase() === b1))
+  );
+
+  if (!exists) {
+    const inferredZone = (zonaStr || (b1.includes('CELINA') ? 'VILLA CELINA' : '')).toUpperCase();
+    db.clients.unshift({
+      id: 'CLI-' + (Date.now() + Math.floor(Math.random() * 9999)),
+      barberia: b1,
+      barbero: b2 || b1,
+      zona: inferredZone,
+      ruta: (b1.includes('CELINA') || inferredZone.includes('CELINA')) ? 'LUNES / VIERNES' : 'A DEFINIR',
+      telefono: '',
+      categoria: 'PLATA',
+      direccion: '',
+      deudaBase: 0,
+      notas: 'Creado automáticamente desde carga rápida'
+    });
+  }
+}
+
 async function saveAllBatchOperations() {
   if (!pendingBatchOps.length) return;
   if (config.cloudKey && config.cloudBin) await syncFromCloud(true);
@@ -1255,6 +1305,8 @@ async function saveAllBatchOperations() {
       barberia = parts[0].trim();
       barbero = parts[1].trim();
     }
+
+    ensureClientExists(barberia, barbero, op.zona);
 
     if (op.tipo === 'TAREA') {
       db.tasks.unshift({
@@ -1273,8 +1325,9 @@ async function saveAllBatchOperations() {
         cliente: barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase(),
         ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
         items: op.resolvedItems,
-        detalleManual: op.resolvedItems.length ? '' : (op.notas || 'Pedido por audio'),
+        detalleManual: op.resolvedItems.length ? '' : (op.notas || 'Pedido por lote'),
         totalEstimado: op.totalCalculado,
+        sena: Number(op.sena) || 0,
         estado: 'PENDIENTE',
         notas: op.notas || ''
       });
@@ -1379,6 +1432,7 @@ async function saveDetectedOrder() {
     items: [...currentCart],
     detalleManual: currentCart.length ? '' : (document.getElementById('mov-detalle').value.trim() || document.getElementById('voice-input').value.trim()),
     totalEstimado: Number(document.getElementById('mov-monto').value) || 0,
+    sena: Number(lastDetectedOrder.sena) || 0,
     estado: 'PENDIENTE',
     notas: document.getElementById('mov-obs').value.trim()
   });
@@ -1395,7 +1449,7 @@ async function saveDetectedOrder() {
   showToast('📦 Pedido guardado en Historial y bandeja de Pedidos');
 }
 
-/* --- DICTADO POR VOZ E INTERPRETACIÓN INTELIGENTE DE TEXTO --- */
+/* --- DICTADO POR VOZ E INTERPRETACIÓN INTELIGENTE DE TEXTO / RESÚMENES --- */
 function startDictation() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) return showToast('Tu navegador no soporta dictado directo; usá el micrófono del teclado o subí el audio de WhatsApp.');
@@ -1416,19 +1470,12 @@ function startDictation() {
 
 async function parseSmartCommand() {
   const text = document.getElementById('voice-input').value.trim();
-  if (!text) return showToast('Escribí, dictá o subí primero un audio');
+  if (!text) return showToast('Escribí, pegá un resumen o subí primero un audio');
 
   if (config.geminiKey) {
-    showToast('Interpretando mensaje con IA...');
+    showToast('Interpretando resumen con IA...');
     try {
-      const cliList = db.clients.map(c => `${c.barberia} | ${c.barbero}`).join('; ');
-      const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
-      const prompt = `Sos el asistente de Rapibarbe. Hoy es ${todayISO()}. Extraé en JSON estricto una o varias acciones de este mensaje: "${text}".
-Clientes válidos: [${cliList}]
-Productos válidos: [${invList}]
-Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
-Devolvé SOLO JSON válido con este formato exacto:
-{"operaciones":[{"tipo":"VENTA FIADA"|"VENTA CONTADO"|"ABONO / PAGO"|"PEDIDO"|"TAREA","subtipoTarea":"AVISO PAGO"|"GRABAR POLO"|"AVISO RUTA"|"GENERAL","fechaProgramada":"YYYY-MM-DD","cliente":"BARBERIA | BARBERO","items":[{"codigo":"ART-XXX","qty":1}],"montoManual":0,"abonoParcial":0,"medio":"EFECTIVO"|"TRANSFERENCIA"|"CUENTA CORRIENTE","notas":""}]}`;
+      const prompt = buildSmartExtractionPrompt(text);
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`, {
         method: 'POST',
@@ -1497,6 +1544,8 @@ async function saveMovement(e) {
     barbero = parts[1].trim();
   }
 
+  ensureClientExists(barberia, barbero);
+
   const tipo = document.getElementById('mov-tipo').value;
   const monto = Number(document.getElementById('mov-monto').value) || 0;
   const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
@@ -1513,6 +1562,7 @@ async function saveMovement(e) {
       items: [...currentCart],
       detalleManual: currentCart.length ? '' : document.getElementById('mov-detalle').value.trim(),
       totalEstimado: monto,
+      sena: 0,
       estado: 'PENDIENTE',
       notas: document.getElementById('mov-obs').value.trim()
     });
@@ -1588,7 +1638,6 @@ function deleteMovement(id) {
 }
 
 function renderMovements() {
-  // 1. CALCULAR RESUMEN DE VENTAS DE PAPÁ (FREDDY) EN LA FECHA SELECCIONADA
   const papaDateInput = document.getElementById('papa-day-date');
   const selectedDay = (papaDateInput && papaDateInput.value) ? papaDateInput.value : todayISO();
 
@@ -1621,7 +1670,6 @@ function renderMovements() {
     document.getElementById('papa-day-label').textContent = `Fecha consultada: ${selectedDay}`;
   }
 
-  // 2. RENDERIZAR HISTORIAL COMPLETO (VENTAS + COBROS + PEDIDOS) CON BOTONES EDITAR Y ELIMINAR
   const tbody = document.getElementById('all-movs-body');
   if (!tbody) return;
 
@@ -1698,11 +1746,18 @@ function renderOrders() {
     const desc = (o.items && o.items.length)
       ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
       : (o.detalleManual || o.notas || 'Pedido sin detalle');
+    const sena = Number(o.sena) || 0;
+    const total = Number(o.totalEstimado) || 0;
+    const resta = Math.max(0, total - sena);
+    const senaInfo = sena > 0
+      ? `<div class="text-green" style="font-size:11px;">Seña: ${fmtMoney(sena)} · Resta: <b>${fmtMoney(resta)}</b></div>`
+      : '';
+
     const isPending = o.estado === 'PENDIENTE';
     const actionBtns = isPending
       ? `<div class="action-icon-group">
-           <button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA FIADA')" title="Entregar Fiado">Fiado</button>
-           <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar Contado">Contado</button>
+           <button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA FIADA')" title="Entregar Fiado (por el saldo restante)">Fiado</button>
+           <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar Contado (por el saldo restante)">Contado</button>
            <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
            <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
          </div>`
@@ -1716,8 +1771,8 @@ function renderOrders() {
       <tr>
         <td><div class="font-bold">${o.fecha}</div><div class="muted" style="font-size:11px;">${o.ruta || 'A DEFINIR'}</div></td>
         <td><div class="font-bold">${o.cliente}</div>${o.notas ? `<div class="muted" style="font-size:11px;">📝 ${o.notas}</div>` : ''}</td>
-        <td>${desc}</td>
-        <td class="text-right font-bold">${fmtMoney(o.totalEstimado)}</td>
+        <td><div>${desc}</div>${senaInfo}</td>
+        <td class="text-right font-bold">${fmtMoney(total)}</td>
         <td class="text-right" style="white-space:nowrap;">${actionBtns}</td>
       </tr>
     `;
@@ -1762,6 +1817,7 @@ async function saveQuickOrder(e) {
     items: [],
     detalleManual: detail,
     totalEstimado: total,
+    sena: 0,
     estado: 'PENDIENTE',
     notas: nota
   });
@@ -1777,7 +1833,13 @@ async function saveQuickOrder(e) {
 async function deliverOrder(orderId, tipoVenta) {
   const ord = db.orders.find(o => o.id === orderId);
   if (!ord) return;
-  if (!confirm(`¿Marcar pedido de ${ord.cliente} como ENTREGADO (${tipoVenta})? Se descontará el stock y se registrará la venta.`)) return;
+  const sena = Number(ord.sena) || 0;
+  const saldoRestante = Math.max(0, (Number(ord.totalEstimado) || 0) - sena);
+  const confirmMsg = sena > 0
+    ? `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${tipoVenta})?\nTotal: ${fmtMoney(ord.totalEstimado)} | Seña ya cobrada: ${fmtMoney(sena)} | Saldo a registrar ahora: ${fmtMoney(saldoRestante)}`
+    : `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${tipoVenta}) por ${fmtMoney(saldoRestante)}?`;
+
+  if (!confirm(confirmMsg)) return;
 
   if (config.cloudKey && config.cloudBin) await syncFromCloud(true);
   const currentOrd = db.orders.find(o => o.id === orderId);
@@ -1793,26 +1855,29 @@ async function deliverOrder(orderId, tipoVenta) {
   const parts = (currentOrd.cliente || '').split('|');
   const barberia = (parts[0] || '').trim().toUpperCase();
   const barbero = (parts[1] || '').trim().toUpperCase();
-  const detalleText = (currentOrd.items && currentOrd.items.length)
+  const detalleBase = (currentOrd.items && currentOrd.items.length)
     ? currentOrd.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
     : (currentOrd.detalleManual || 'Pedido entregado');
+  const detalleText = sena > 0 ? `${detalleBase} (Saldo restante tras seña de ${fmtMoney(sena)})` : detalleBase;
 
-  db.movs.push({
-    id: 'MOV-' + Date.now(),
-    fecha: todayISO(),
-    barberia,
-    barbero,
-    tipo: tipoVenta,
-    detalle: detalleText,
-    medio: tipoVenta === 'VENTA FIADA' ? 'CUENTA CORRIENTE' : 'EFECTIVO',
-    monto: Number(currentOrd.totalEstimado) || 0,
-    items: currentOrd.items || [],
-    obs: currentOrd.notas || 'Pedido entregado'
-  });
+  if (saldoRestante > 0) {
+    db.movs.push({
+      id: 'MOV-' + Date.now(),
+      fecha: todayISO(),
+      barberia,
+      barbero,
+      tipo: tipoVenta,
+      detalle: detalleText,
+      medio: tipoVenta === 'VENTA FIADA' ? 'CUENTA CORRIENTE' : 'EFECTIVO',
+      monto: saldoRestante,
+      items: currentOrd.items || [],
+      obs: currentOrd.notas || 'Pedido entregado'
+    });
+  }
 
   currentOrd.estado = 'ENTREGADO';
   await persistData();
-  showToast(`✅ Pedido entregado como ${tipoVenta} y stock actualizado`);
+  showToast(`✅ Pedido entregado (${fmtMoney(saldoRestante)} registrados) y stock actualizado`);
 }
 
 function deleteOrder(id) {
