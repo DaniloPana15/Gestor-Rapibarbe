@@ -22,6 +22,8 @@ let currentCart = [];
 let editOpCart = [];
 let lastDetectedOrder = null;
 let pendingBatchOps = [];
+let isSyncingNow = false;
+let cachedGeminiModel = '';
 
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const todayISO = () => new Date().toISOString().split('T')[0];
@@ -52,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   setInterval(() => {
-    if (config.cloudKey && config.cloudBin && document.visibilityState === 'visible') {
+    if (config.cloudKey && config.cloudBin && document.visibilityState === 'visible' && !isSyncingNow) {
       syncFromCloud(true);
     }
   }, 30000);
@@ -107,13 +109,15 @@ function loadLocalData() {
   }
 }
 
+/* GUARDADO INSTANTÁNEO EN PANTALLA + SINCRONIZACIÓN EN SEGUNDO PLANO */
 async function persistData() {
   ensureDbArrays();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   renderAll();
 
   if (config.cloudKey && config.cloudBin) {
-    setSyncStatus('Sincronizando con nube...', false);
+    isSyncingNow = true;
+    setSyncStatus('Subiendo a la nube...', false);
     try {
       const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}`, {
         method: 'PUT',
@@ -123,6 +127,8 @@ async function persistData() {
       setSyncStatus(res.ok ? 'Sincronizado en la nube ✓' : 'Error al subir (guardado local OK)', res.ok);
     } catch (err) {
       setSyncStatus('Sin internet (guardado local)', false);
+    } finally {
+      isSyncingNow = false;
     }
   } else {
     setSyncStatus('Guardado en este dispositivo', false);
@@ -137,6 +143,8 @@ async function syncFromCloud(silent = false) {
     }
     return;
   }
+  if (isSyncingNow) return;
+  isSyncingNow = true;
   if (!silent) setSyncStatus('Descargando de la nube...', false);
   try {
     const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}/latest`, {
@@ -154,6 +162,8 @@ async function syncFromCloud(silent = false) {
     }
   } catch (e) {
     if (!silent) setSyncStatus('No se pudo conectar a la nube', false);
+  } finally {
+    isSyncingNow = false;
   }
 }
 
@@ -191,6 +201,7 @@ function saveCloudConfig(e) {
   config.cloudKey = document.getElementById('cloud-key').value.trim();
   config.cloudBin = document.getElementById('cloud-bin').value.trim();
   config.geminiKey = document.getElementById('gemini-key').value.trim();
+  cachedGeminiModel = '';
   saveConfigLocal();
   showToast('Configuración guardada');
   if (config.cloudKey && config.cloudBin) syncFromCloud();
@@ -261,8 +272,8 @@ function showApp() {
   document.getElementById('app-shell').style.display = 'block';
   const dock = document.getElementById('mobile-dock');
   if (dock && window.innerWidth <= 960) dock.style.display = 'flex';
-  if (config.cloudKey && config.cloudBin) syncFromCloud();
-  else renderAll();
+  renderAll();
+  if (config.cloudKey && config.cloudBin) syncFromCloud(true);
 }
 
 function lockApp() {
@@ -1093,16 +1104,15 @@ Clientes existentes: [${cliList}]
 Productos en stock: [${invList}]
 
 REGLAS CRÍTICAS DE DESGLOSE:
-1. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva (ej: "Abono $30.000 + 1 shaver crédito $16.000" o "Tenía deuda $65.000 + shaver $40.000, abonó $40.000"), separalo en DOS operaciones en el array:
+1. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva, separalo en DOS operaciones en el array:
    - Operación A: tipo "ABONO / PAGO" por el monto abonado.
    - Operación B: tipo "VENTA FIADA" por la mercadería nueva llevada.
-2. Si un cliente deja SEÑA por un PEDIDO pendiente (ej: "Richard: 1 silla $1.000.000, seña $100.000, resta $900.000"), generá:
-   - Operación A: tipo "PEDIDO", montoManual: 1000000, sena: 100000, notas: "1 silla de barbería · Seña $100.000 · Resta $900.000".
-   - Operación B: tipo "ABONO / PAGO" por $100.000 con notas "Seña por pedido (silla de barbería)" SOLO si no figura ya aparte como cobro del día.
-3. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy", "Mercadería entregada hoy" o "Total en pedidos por entregar".
+2. Si un cliente deja SEÑA por un PEDIDO pendiente, generá:
+   - Operación A: tipo "PEDIDO", montoManual: total, sena: seña.
+   - Operación B: tipo "ABONO / PAGO" por el monto de la seña SOLO si no figura ya aparte como cobro del día.
+3. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy" o "Mercadería entregada hoy".
 4. Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
-5. Si el cliente no está en la lista, formatealo como "BARBERIA O ZONA | NOMBRE" (ej: "CELINA - GOYO | NELSON" o "BARBERIA LIAN | HECTOR") y completá "zona" si se menciona.
-6. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
+5. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
 
 Devolvé ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
@@ -1126,6 +1136,7 @@ Devolvé ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 }
 
 async function getAvailableGeminiModels(apiKey) {
+  if (cachedGeminiModel) return [cachedGeminiModel];
   const preferred = ['gemini-3.8-flash', 'gemini-3-flash-preview', 'gemini-3.1-flash-lite-preview', 'gemini-2.5-flash', 'gemini-flash-latest'];
   try {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`);
@@ -1170,6 +1181,7 @@ async function callGeminiWithFallback(partsArray) {
 
       const data = await res.json();
       if (!res.ok) {
+        cachedGeminiModel = '';
         lastError = (data.error && data.error.message) ? data.error.message : `HTTP ${res.status}`;
         continue;
       }
@@ -1180,6 +1192,7 @@ async function callGeminiWithFallback(partsArray) {
         continue;
       }
 
+      cachedGeminiModel = model;
       const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
       const firstBracket = cleaned.indexOf('[');
       const firstBrace = cleaned.indexOf('{');
@@ -1194,6 +1207,7 @@ async function callGeminiWithFallback(partsArray) {
       const jsonStr = (firstBrace !== -1 && lastBrace !== -1) ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned;
       return JSON.parse(jsonStr);
     } catch (err) {
+      cachedGeminiModel = '';
       lastError = err.message || String(err);
     }
   }
@@ -1201,9 +1215,12 @@ async function callGeminiWithFallback(partsArray) {
   throw new Error(lastError);
 }
 
-/* ANALIZADOR LOCAL ESTRUCTURADO (RESPALDO INSTANTÁNEO SI FALLA LA RED O API) */
+/* ANALIZADOR LOCAL INSTANTÁNEO PARA RESÚMENES ESTRUCTURADOS CON GUIONES */
 function parseStructuredSummaryLocally(rawText) {
   const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const bulletLines = lines.filter(l => /^[-•*]\s+/.test(l));
+  if (bulletLines.length < 2) return [];
+
   const ops = [];
   let inOrdersSection = false;
 
@@ -1225,12 +1242,10 @@ function parseStructuredSummaryLocally(rawText) {
       continue;
     }
     if (upper.includes('TOTALES DEL DÍA') || upper.startsWith('TOTAL ')) continue;
-    if (!line.startsWith('-') && !line.includes(':')) continue;
+    if (!/^[-•*]\s+/.test(line) || !line.includes(':')) continue;
 
     const cleanLine = line.replace(/^[-•*]\s*/, '');
     const colonIdx = cleanLine.indexOf(':');
-    if (colonIdx === -1) continue;
-
     const rawWho = cleanLine.slice(0, colonIdx).trim();
     const rest = cleanLine.slice(colonIdx + 1).trim();
 
@@ -1274,7 +1289,6 @@ function parseStructuredSummaryLocally(rawText) {
       continue;
     }
 
-    // Caso 1: Abono deuda anterior + mercadería nueva en la misma línea
     const abonoPlusSale = mainDesc.match(/Abono\s+(?:deuda\s*)?\(\$\s*([\d.]+)\)\s*\+\s*(.+)/i);
     if (abonoPlusSale) {
       const abonoVal = parseArs(abonoPlusSale[1]);
@@ -1307,7 +1321,6 @@ function parseStructuredSummaryLocally(rawText) {
       continue;
     }
 
-    // Caso 2: Tenía deuda + producto, y abonó un monto
     const deudaPlusProd = mainDesc.match(/Tenía deuda de\s*\$\s*([\d.]+)\s*\+\s*(.+)/i);
     if (deudaPlusProd) {
       const prodPart = deudaPlusProd[2].trim();
@@ -1341,7 +1354,6 @@ function parseStructuredSummaryLocally(rawText) {
       continue;
     }
 
-    // Caso 3: Solo Abono / Seña
     if (/^(Abono|Seña)/i.test(mainDesc)) {
       const amountM = rest.match(/(?:Abonó:|=\s*)\$\s*([\d.]+)/i) || rest.match(/\$\s*([\d.]+)/);
       const val = amountM ? parseArs(amountM[1]) : 0;
@@ -1357,7 +1369,6 @@ function parseStructuredSummaryLocally(rawText) {
       continue;
     }
 
-    // Caso 4: Venta Contado o Venta Fiada
     const eqM = mainDesc.match(/=\s*\$\s*([\d.]+)/) || mainDesc.match(/\$\s*([\d.]+)/);
     const saleVal = eqM ? parseArs(eqM[1]) : 0;
     const isContado = /pagado completo|contado|efectivo/i.test(paySeg) && !/pendiente|debe:\s*\$\s*[1-9]/i.test(rest);
@@ -1491,11 +1502,11 @@ function renderBatchReview(ops) {
           `;
         }).join('')}
       </div>
-      <button type="button" class="btn-primary btn-full" style="margin-top:12px;" onclick="saveAllBatchOperations()">✅ Confirmar y Guardar Todas (${pendingBatchOps.length})</button>
+      <button type="button" id="btn-save-batch" class="btn-primary btn-full" style="margin-top:12px;" onclick="saveAllBatchOperations()">✅ Confirmar y Guardar Todas (${pendingBatchOps.length})</button>
     </div>
   `;
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  showToast(`Se detectaron ${pendingBatchOps.length} acciones. Revisalas y tocá Guardar Todas.`);
+  showToast(`⚡ ${pendingBatchOps.length} acciones listas para confirmar`);
 }
 
 function removeBatchItem(idx) {
@@ -1539,7 +1550,11 @@ function ensureClientExists(barberiaStr, barberoStr, zonaStr = '') {
 
 async function saveAllBatchOperations() {
   if (!pendingBatchOps.length) return;
-  if (config.cloudKey && config.cloudBin) await syncFromCloud(true);
+  const btn = document.getElementById('btn-save-batch');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Guardando operaciones...';
+  }
 
   const fecha = document.getElementById('mov-fecha').value || todayISO();
 
@@ -1621,8 +1636,11 @@ async function saveAllBatchOperations() {
   const count = pendingBatchOps.length;
   closeBatchReview();
   document.getElementById('voice-input').value = '';
+  const dropHint = document.getElementById('drop-hint-text');
+  if (dropHint) dropHint.innerHTML = '📎 Arrastrá un <strong>audio de WhatsApp</strong> acá o <strong>tocá para subirlo</strong>';
+
   await persistData();
-  showToast(`✅ ¡${count} acciones guardadas en Historial y sincronizadas!`);
+  showToast(`✅ ¡${count} acciones guardadas al instante!`);
 }
 
 function applyParsedCommandToForm(parsed) {
@@ -1719,10 +1737,26 @@ async function parseSmartCommand() {
   if (!text) return showToast('Escribí, pegá un resumen o subí primero un audio');
 
   const dropHint = document.getElementById('drop-hint-text');
-  if (dropHint) dropHint.innerHTML = '⏳ Analizando resumen con IA...';
 
+  // 1. Si es un resumen estructurado con viñetas (- Cliente: ...), se desglosa en 0ms sin esperar a internet
+  const instantLocalOps = parseStructuredSummaryLocally(text);
+  if (instantLocalOps.length >= 2) {
+    document.getElementById('detected-order-banner').style.display = 'none';
+    renderBatchReview(instantLocalOps);
+    if (dropHint) dropHint.innerHTML = `⚡ ${instantLocalOps.length} acciones desglosadas al instante:`;
+    return;
+  }
+
+  // 2. Para frases libres o dictado, usa Gemini con indicador visible de carga
   if (config.geminiKey) {
-    showToast('Interpretando resumen con IA...');
+    const aiBtn = document.querySelector('button[onclick="parseSmartCommand()"]');
+    const originalBtnText = aiBtn ? aiBtn.innerHTML : '✨ Interpretar con IA';
+    if (aiBtn) {
+      aiBtn.disabled = true;
+      aiBtn.innerHTML = '⏳ Analizando...';
+    }
+    if (dropHint) dropHint.innerHTML = '⏳ Interpretando mensaje con Gemini...';
+
     try {
       const prompt = buildSmartExtractionPrompt(text);
       const parsed = await callGeminiWithFallback([{ text: prompt }]);
@@ -1736,28 +1770,17 @@ async function parseSmartCommand() {
         renderBatchReview(ops);
       }
       if (dropHint) dropHint.innerHTML = `✅ ${ops.length} acciones listas para confirmar abajo:`;
-      return;
     } catch (err) {
       console.error('Error Gemini Texto:', err);
-      const localOps = parseStructuredSummaryLocally(text);
-      if (localOps.length > 0) {
-        document.getElementById('detected-order-banner').style.display = 'none';
-        renderBatchReview(localOps);
-        if (dropHint) dropHint.innerHTML = `✅ ${localOps.length} acciones desglosadas automáticamente:`;
-        return;
-      }
       if (dropHint) dropHint.innerHTML = `❌ Error Gemini: ${err.message}`;
       showToast(`Error Gemini: ${err.message}`);
-      return;
+    } finally {
+      if (aiBtn) {
+        aiBtn.disabled = false;
+        aiBtn.innerHTML = originalBtnText;
+      }
     }
   } else {
-    const localOps = parseStructuredSummaryLocally(text);
-    if (localOps.length > 0) {
-      document.getElementById('detected-order-banner').style.display = 'none';
-      renderBatchReview(localOps);
-      if (dropHint) dropHint.innerHTML = `✅ ${localOps.length} acciones desglosadas:`;
-      return;
-    }
     showToast('Falta tu Gemini API Key en Nube & IA');
     switchTab('nube');
   }
@@ -1765,95 +1788,105 @@ async function parseSmartCommand() {
 
 async function saveMovement(e) {
   e.preventDefault();
-  if (config.cloudKey && config.cloudBin) {
-    await syncFromCloud(true);
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  const origText = submitBtn ? submitBtn.textContent : 'Guardar Operación';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Guardando...';
   }
 
-  const rawCli = document.getElementById('mov-cliente-search').value.trim();
-  let barberia = rawCli, barbero = '';
-  if (rawCli.includes('|')) {
-    const parts = rawCli.split('|');
-    barberia = parts[0].trim();
-    barbero = parts[1].trim();
-  }
+  try {
+    const rawCli = document.getElementById('mov-cliente-search').value.trim();
+    let barberia = rawCli, barbero = '';
+    if (rawCli.includes('|')) {
+      const parts = rawCli.split('|');
+      barberia = parts[0].trim();
+      barbero = parts[1].trim();
+    }
 
-  ensureClientExists(barberia, barbero);
+    ensureClientExists(barberia, barbero);
 
-  const tipo = document.getElementById('mov-tipo').value;
-  const monto = Number(document.getElementById('mov-monto').value) || 0;
-  const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
-  const fecha = document.getElementById('mov-fecha').value;
-  const medio = document.getElementById('mov-medio').value;
+    const tipo = document.getElementById('mov-tipo').value;
+    const monto = Number(document.getElementById('mov-monto').value) || 0;
+    const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
+    const fecha = document.getElementById('mov-fecha').value;
+    const medio = document.getElementById('mov-medio').value;
 
-  if (tipo === 'PEDIDO') {
-    const matched = findClientByComposite(rawCli);
-    db.orders.unshift({
-      id: 'ORD-' + Date.now(),
+    if (tipo === 'PEDIDO') {
+      const matched = findClientByComposite(rawCli);
+      db.orders.unshift({
+        id: 'ORD-' + Date.now(),
+        fecha,
+        cliente: barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase(),
+        ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
+        items: [...currentCart],
+        detalleManual: currentCart.length ? '' : document.getElementById('mov-detalle').value.trim(),
+        totalEstimado: monto,
+        sena: 0,
+        estado: 'PENDIENTE',
+        notas: document.getElementById('mov-obs').value.trim()
+      });
+
+      currentCart = [];
+      renderCart();
+      document.getElementById('mov-monto').value = '';
+      document.getElementById('mov-detalle').value = '';
+      document.getElementById('mov-obs').value = '';
+      document.getElementById('voice-input').value = '';
+      await persistData();
+      showToast('📦 Pedido guardado al instante');
+      return;
+    }
+
+    if (currentCart.length && tipo !== 'ABONO / PAGO') {
+      currentCart.forEach(item => {
+        const invItem = db.inv.find(x => x.codigo === item.codigo);
+        if (invItem) invItem.stock = Number(invItem.stock) - item.qty;
+      });
+    }
+
+    db.movs.push({
+      id: 'MOV-' + Date.now(),
       fecha,
-      cliente: barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase(),
-      ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
+      barberia: barberia.toUpperCase(),
+      barbero: barbero.toUpperCase(),
+      tipo,
+      detalle: document.getElementById('mov-detalle').value.trim(),
+      medio,
+      monto,
       items: [...currentCart],
-      detalleManual: currentCart.length ? '' : document.getElementById('mov-detalle').value.trim(),
-      totalEstimado: monto,
-      sena: 0,
-      estado: 'PENDIENTE',
-      notas: document.getElementById('mov-obs').value.trim()
+      obs: document.getElementById('mov-obs').value.trim()
     });
+
+    if (tipo === 'VENTA FIADA' && abonoParcial > 0) {
+      db.movs.push({
+        id: 'MOV-' + (Date.now() + 1),
+        fecha,
+        barberia: barberia.toUpperCase(),
+        barbero: barbero.toUpperCase(),
+        tipo: 'ABONO / PAGO',
+        detalle: 'Entrega a cuenta en el momento de la venta',
+        medio,
+        monto: abonoParcial,
+        obs: ''
+      });
+    }
 
     currentCart = [];
     renderCart();
     document.getElementById('mov-monto').value = '';
+    document.getElementById('mov-abono-parcial').value = '';
     document.getElementById('mov-detalle').value = '';
     document.getElementById('mov-obs').value = '';
     document.getElementById('voice-input').value = '';
     await persistData();
-    showToast('📦 Pedido guardado en el Historial y bandeja Pedidos');
-    return;
+    showToast('✅ Movimiento guardado al instante');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = origText;
+    }
   }
-
-  if (currentCart.length && tipo !== 'ABONO / PAGO') {
-    currentCart.forEach(item => {
-      const invItem = db.inv.find(x => x.codigo === item.codigo);
-      if (invItem) invItem.stock = Number(invItem.stock) - item.qty;
-    });
-  }
-
-  db.movs.push({
-    id: 'MOV-' + Date.now(),
-    fecha,
-    barberia: barberia.toUpperCase(),
-    barbero: barbero.toUpperCase(),
-    tipo,
-    detalle: document.getElementById('mov-detalle').value.trim(),
-    medio,
-    monto,
-    items: [...currentCart],
-    obs: document.getElementById('mov-obs').value.trim()
-  });
-
-  if (tipo === 'VENTA FIADA' && abonoParcial > 0) {
-    db.movs.push({
-      id: 'MOV-' + (Date.now() + 1),
-      fecha,
-      barberia: barberia.toUpperCase(),
-      barbero: barbero.toUpperCase(),
-      tipo: 'ABONO / PAGO',
-      detalle: 'Entrega a cuenta en el momento de la venta',
-      medio,
-      monto: abonoParcial,
-      obs: ''
-    });
-  }
-
-  currentCart = [];
-  renderCart();
-  document.getElementById('mov-monto').value = '';
-  document.getElementById('mov-abono-parcial').value = '';
-  document.getElementById('mov-detalle').value = '';
-  document.getElementById('mov-obs').value = '';
-  document.getElementById('voice-input').value = '';
-  await persistData();
-  showToast('Movimiento guardado y stock actualizado');
 }
 
 function deleteMovement(id) {
@@ -2074,23 +2107,19 @@ async function deliverOrder(orderId, tipoVenta) {
 
   if (!confirm(confirmMsg)) return;
 
-  if (config.cloudKey && config.cloudBin) await syncFromCloud(true);
-  const currentOrd = db.orders.find(o => o.id === orderId);
-  if (!currentOrd) return;
-
-  if (currentOrd.items && currentOrd.items.length) {
-    currentOrd.items.forEach(item => {
+  if (ord.items && ord.items.length) {
+    ord.items.forEach(item => {
       const invItem = db.inv.find(x => x.codigo === item.codigo);
       if (invItem) invItem.stock = Number(invItem.stock) - Number(item.qty);
     });
   }
 
-  const parts = (currentOrd.cliente || '').split('|');
+  const parts = (ord.cliente || '').split('|');
   const barberia = (parts[0] || '').trim().toUpperCase();
   const barbero = (parts[1] || '').trim().toUpperCase();
-  const detalleBase = (currentOrd.items && currentOrd.items.length)
-    ? currentOrd.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
-    : (currentOrd.detalleManual || 'Pedido entregado');
+  const detalleBase = (ord.items && ord.items.length)
+    ? ord.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
+    : (ord.detalleManual || 'Pedido entregado');
   const detalleText = sena > 0 ? `${detalleBase} (Saldo restante tras seña de ${fmtMoney(sena)})` : detalleBase;
 
   if (saldoRestante > 0) {
@@ -2103,12 +2132,12 @@ async function deliverOrder(orderId, tipoVenta) {
       detalle: detalleText,
       medio: tipoVenta === 'VENTA FIADA' ? 'CUENTA CORRIENTE' : 'EFECTIVO',
       monto: saldoRestante,
-      items: currentOrd.items || [],
-      obs: currentOrd.notas || 'Pedido entregado'
+      items: ord.items || [],
+      obs: ord.notas || 'Pedido entregado'
     });
   }
 
-  currentOrd.estado = 'ENTREGADO';
+  ord.estado = 'ENTREGADO';
   await persistData();
   showToast(`✅ Pedido entregado (${fmtMoney(saldoRestante)} registrados) y stock actualizado`);
 }
