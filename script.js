@@ -1,24 +1,41 @@
-// Respaldo inicial seguro (si tenés tu const INITIAL_DATA = {...} del Excel, podés pegarlo acá reemplazando esta línea)
 const INITIAL_DATA = { clients: [], movs: [], inv: [] };
+
+const DEFAULT_HABITS = [
+  { id: 'HAB-1', day: 'LUN', text: 'Ruta Celina: revisar saldos y avisar visita por WhatsApp', done: false },
+  { id: 'HAB-2', day: 'LUN', text: 'Tarde: avisar por WhatsApp a barberos de ruta Martes (Liniers)', done: false },
+  { id: 'HAB-3', day: 'MAR', text: 'Ruta Liniers: cobrar pendientes y anotar pedidos del día', done: false },
+  { id: 'HAB-4', day: 'MIE', text: 'Preparar mercadería y avisar por WhatsApp a ruta Jueves (Virreyes)', done: false },
+  { id: 'HAB-5', day: 'JUE', text: 'Ruta Virreyes + avisar a barberos de Viernes (Flores / Pompeya)', done: false },
+  { id: 'HAB-6', day: 'VIE', text: 'Ruta Flores/Pompeya + grabar contenido / polo barbero con clientes', done: false },
+  { id: 'HAB-7', day: 'SAB', text: 'Cierre semanal: revisar deudores activos y reposición de stock', done: false }
+];
 
 const STORAGE_KEY = 'rapibarbe_db_v3';
 const CONFIG_KEY = 'rapibarbe_config_v2';
 
-let db = { clients: [], movs: [], inv: [], orders: [] };
+let db = { clients: [], movs: [], inv: [], orders: [], tasks: [], habits: [] };
 let config = { pin: '1234', cloudKey: '', cloudBin: '', geminiKey: '' };
 let activeRouteFilter = 'TODOS';
 let activeOrderFilter = 'PENDIENTE';
+let activeTaskFilter = 'PENDIENTES';
 let currentCart = [];
 let lastDetectedOrder = null;
 let pendingBatchOps = [];
 
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+const todayISO = () => new Date().toISOString().split('T')[0];
 
 document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   applyMagicLinkFromUrl();
   loadLocalData();
-  document.getElementById('mov-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mov-fecha').value = todayISO();
+  if (document.getElementById('papa-day-date')) {
+    document.getElementById('papa-day-date').value = todayISO();
+  }
+  if (document.getElementById('task-fecha')) {
+    document.getElementById('task-fecha').value = todayISO();
+  }
   setupAudioDropzone();
 
   if (sessionStorage.getItem('rapibarbe_unlocked') === '1') {
@@ -55,23 +72,34 @@ function saveConfigLocal() {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
 
+function ensureDbArrays() {
+  if (!Array.isArray(db.clients)) db.clients = [];
+  if (!Array.isArray(db.movs)) db.movs = [];
+  if (!Array.isArray(db.inv)) db.inv = [];
+  if (!Array.isArray(db.orders)) db.orders = [];
+  if (!Array.isArray(db.tasks)) db.tasks = [];
+  if (!Array.isArray(db.habits) || !db.habits.length) {
+    db.habits = JSON.parse(JSON.stringify(DEFAULT_HABITS));
+  }
+}
+
 function loadLocalData() {
   const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('rapibarbe_db_v2');
   if (saved) {
     try {
       db = JSON.parse(saved);
-      if (!Array.isArray(db.orders)) db.orders = [];
+      ensureDbArrays();
     } catch (e) {
-      db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [] };
+      db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [], habits: JSON.parse(JSON.stringify(DEFAULT_HABITS)) };
     }
   } else {
-    db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [] };
+    db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [], habits: JSON.parse(JSON.stringify(DEFAULT_HABITS)) };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   }
 }
 
 async function persistData() {
-  if (!Array.isArray(db.orders)) db.orders = [];
+  ensureDbArrays();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   renderAll();
 
@@ -109,7 +137,7 @@ async function syncFromCloud(silent = false) {
     const json = await res.json();
     if (json.record && json.record.clients) {
       db = json.record;
-      if (!Array.isArray(db.orders)) db.orders = [];
+      ensureDbArrays();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
       renderAll();
       setSyncStatus('Nube actualizada ✓', true);
@@ -283,6 +311,7 @@ function getClientBalance(client) {
 function renderAll() {
   renderKPIs();
   renderDashboard();
+  renderAgenda();
   renderMovements();
   renderOrders();
   renderClients();
@@ -306,6 +335,8 @@ function renderKPIs() {
   });
 
   const pendingOrdersCount = (db.orders || []).filter(o => o.estado === 'PENDIENTE').length;
+  const today = todayISO();
+  const pendingTasksToday = (db.tasks || []).filter(t => !t.done && t.fecha <= today).length;
 
   document.getElementById('kpi-deuda').textContent = fmtMoney(totalDeuda);
   document.getElementById('kpi-deudores-count').textContent = `${deudoresCount} barberos con saldo activo`;
@@ -315,6 +346,8 @@ function renderKPIs() {
   document.getElementById('kpi-stock-bajo').textContent = db.inv.filter(i => Number(i.stock) <= 3).length;
   document.getElementById('kpi-pedidos-pendientes').textContent = pendingOrdersCount;
   document.getElementById('nav-orders-count').textContent = pendingOrdersCount;
+  document.getElementById('kpi-tareas-hoy').textContent = pendingTasksToday;
+  document.getElementById('nav-tasks-count').textContent = pendingTasksToday;
 }
 
 function setRouteFilter(route, btn) {
@@ -322,6 +355,27 @@ function setRouteFilter(route, btn) {
   document.querySelectorAll('#route-filters .chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   renderDashboard();
+}
+
+function buildWhatsAppLinkForClient(clientObj, customMode = 'PAGO') {
+  if (!clientObj) return '';
+  const cleanPhone = (clientObj.telefono || '').replace(/\D/g, '');
+  const waPhone = cleanPhone.startsWith('54') ? cleanPhone : (cleanPhone ? '549' + cleanPhone : '');
+  if (!waPhone) return '';
+
+  const saldo = getClientBalance(clientObj);
+  let text = '';
+
+  if (customMode === 'GRABAR POLO') {
+    text = `Hola ${clientObj.barbero}! Cómo va? Te escribo de Rapibarbe. Cuando pasemos por ${clientObj.zona || 'tu barbería'} te llevamos el polo de Rapibarbe para grabar un video rápido en el local, te copa?`;
+  } else if (customMode === 'AVISO RUTA') {
+    text = `Hola ${clientObj.barbero}! Cómo andás? Te aviso que mañana andamos haciendo recorrido por ${clientObj.zona || 'tu zona'}. Avisame si necesitás reponer algún insumo de Rapibarbe!`;
+  } else {
+    const saldoStr = saldo > 0 ? ` de ${fmtMoney(saldo)}` : '';
+    text = `Hola ${clientObj.barbero}! Cómo va? Te escribo de Rapibarbe para recordarte el saldo pendiente${saldoStr}. Avisame cómo venís o cuando pase por ${clientObj.zona || 'tu local'}!`;
+  }
+
+  return `https://wa.me/${waPhone}?text=${encodeURIComponent(text)}`;
 }
 
 function renderDashboard() {
@@ -340,10 +394,8 @@ function renderDashboard() {
     .sort((a, b) => b.saldoActual - a.saldoActual);
 
   tbody.innerHTML = debtors.length ? debtors.map(c => {
-    const cleanPhone = (c.telefono || '').replace(/\D/g, '');
-    const waPhone = cleanPhone.startsWith('54') ? cleanPhone : (cleanPhone ? '549' + cleanPhone : '');
-    const waMsg = encodeURIComponent(`Hola ${c.barbero}! Cómo va? Te escribo de Rapibarbe para recordarte el saldo pendiente de ${fmtMoney(c.saldoActual)}. Avisame cuando pase por ${c.zona || 'tu local'}!`);
-    const waBtn = waPhone ? `<a href="https://wa.me/${waPhone}?text=${waMsg}" target="_blank" class="btn-sm btn-wa">WhatsApp</a>` : '';
+    const waUrl = buildWhatsAppLinkForClient(c, 'PAGO');
+    const waBtn = waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa">WhatsApp</a>` : '';
 
     return `
       <tr>
@@ -357,6 +409,29 @@ function renderDashboard() {
       </tr>
     `;
   }).join('') : `<tr><td colspan="4" class="text-center muted" style="padding:24px;">No hay deudas pendientes en este filtro.</td></tr>`;
+
+  // TAREAS DE HOY EN EL DASHBOARD
+  const today = todayISO();
+  const todayTasks = (db.tasks || []).filter(t => !t.done && t.fecha <= today).slice(0, 4);
+  const dashTasksEl = document.getElementById('dash-today-tasks');
+  if (dashTasksEl) {
+    dashTasksEl.innerHTML = todayTasks.length ? todayTasks.map(t => {
+      const cliObj = findClientByComposite(t.cliente);
+      const waUrl = buildWhatsAppLinkForClient(cliObj, t.tipo);
+      return `
+        <div class="activity-item">
+          <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+            <button class="task-check-btn" onclick="toggleTaskDone('${t.id}')" title="Completar">✓</button>
+            <div style="min-width:0;">
+              <div class="font-bold" style="font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.titulo}</div>
+              <div class="muted" style="font-size:11px;">${t.fecha < today ? '⚠️ Atrasada · ' : '📅 Hoy · '}${t.cliente || t.tipo}</div>
+            </div>
+          </div>
+          ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa" style="flex-shrink:0;">WA</a>` : ''}
+        </div>
+      `;
+    }).join('') : '<p class="muted">No hay avisos ni tareas pendientes para hoy.</p>';
+  }
 
   const routeTotals = {};
   db.clients.forEach(c => {
@@ -376,19 +451,250 @@ function renderDashboard() {
       </div>
     `).join('') || '<p class="muted">Sin deudas activas</p>';
 
-  const recent = [...db.movs].reverse().slice(0, 5);
-  document.getElementById('recent-movs-list').innerHTML = recent.map(m => {
-    const isPay = m.tipo === 'ABONO / PAGO';
+  const unifiedRecent = getUnifiedOperationsList().slice(0, 6);
+  document.getElementById('recent-movs-list').innerHTML = unifiedRecent.map(item => {
+    const isPay = item.tipo === 'ABONO / PAGO';
+    const isOrder = item.isOrder;
+    const valColor = isPay ? 'text-green' : (isOrder ? 'text-amber' : 'text-main');
+    const prefix = isOrder ? '📦 ' : (isPay ? '+' : '');
     return `
       <div class="activity-item">
         <div style="min-width:0; flex:1;">
-          <div class="font-bold" style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.barberia} — ${m.barbero}</div>
-          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.fecha} · ${m.detalle || m.tipo}</div>
+          <div class="font-bold" style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.barberia}${item.barbero ? ' — ' + item.barbero : ''}</div>
+          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.fecha} · ${item.detalle || item.tipo}</div>
         </div>
-        <div class="font-bold ${isPay ? 'text-green' : 'text-main'}" style="flex-shrink:0;">${isPay ? '+' : ''}${fmtMoney(m.monto)}</div>
+        <div class="font-bold ${valColor}" style="flex-shrink:0;">${prefix}${fmtMoney(item.monto)}</div>
       </div>
     `;
   }).join('');
+}
+
+/* --- LISTA UNIFICADA DE OPERACIONES (VENTAS, COBROS Y PEDIDOS) --- */
+function getUnifiedOperationsList() {
+  const movEntries = (db.movs || []).map((m, idx) => ({
+    ...m,
+    isOrder: false,
+    sortIndex: idx
+  }));
+
+  // Agrega pedidos que todavía no fueron duplicados en db.movs con mismo orderId
+  const orderEntries = (db.orders || []).map((o, idx) => {
+    const parts = (o.cliente || '').split('|');
+    const barberia = (parts[0] || '').trim().toUpperCase();
+    const barbero = (parts[1] || '').trim().toUpperCase();
+    const desc = (o.items && o.items.length)
+      ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
+      : (o.detalleManual || o.notas || 'Pedido encargado');
+
+    return {
+      id: o.id,
+      fecha: o.fecha || todayISO(),
+      barberia,
+      barbero,
+      tipo: o.estado === 'ENTREGADO' ? 'PEDIDO (ENTREGADO)' : 'PEDIDO',
+      detalle: desc + (o.notas ? ` (${o.notas})` : ''),
+      medio: 'ENCARGO',
+      monto: Number(o.totalEstimado) || 0,
+      isOrder: true,
+      orderEstado: o.estado,
+      sortIndex: 100000 + idx
+    };
+  });
+
+  return [...movEntries, ...orderEntries].sort((a, b) => {
+    const cmpDate = (b.fecha || '').localeCompare(a.fecha || '');
+    if (cmpDate !== 0) return cmpDate;
+    return b.sortIndex - a.sortIndex;
+  });
+}
+
+function setPapaDateToday() {
+  const input = document.getElementById('papa-day-date');
+  if (input) {
+    input.value = todayISO();
+    renderMovements();
+  }
+}
+
+/* --- AGENDA DE AVISOS WHATSAPP Y HABIT TRACKER --- */
+function findClientByComposite(rawCli) {
+  if (!rawCli) return null;
+  const parts = rawCli.split('|');
+  const b1 = (parts[0] || '').trim().toUpperCase();
+  const b2 = (parts[1] || '').trim().toUpperCase();
+  return db.clients.find(c =>
+    (c.barberia || '').toUpperCase() === b1 && (!b2 || (c.barbero || '').toUpperCase() === b2)
+  ) || db.clients.find(c => (c.barberia || '').toUpperCase() === b1 || (c.barbero || '').toUpperCase() === b1);
+}
+
+function autoFillTaskTitle() {
+  const tipo = document.getElementById('task-tipo').value;
+  const cli = document.getElementById('task-cliente').value.trim();
+  const titleInput = document.getElementById('task-titulo');
+  if (!cli) return;
+
+  const shortName = cli.includes('|') ? cli.split('|')[1].trim() : cli;
+  if (tipo === 'AVISO PAGO') {
+    titleInput.value = `Avisar por WhatsApp a ${shortName} sobre saldo pendiente`;
+  } else if (tipo === 'GRABAR POLO') {
+    titleInput.value = `Grabar video con polo barbero en local de ${shortName}`;
+  } else if (tipo === 'AVISO RUTA') {
+    titleInput.value = `Avisar a ${shortName} que mañana pasamos por su zona`;
+  }
+}
+
+function setTaskFilter(filter, btn) {
+  activeTaskFilter = filter;
+  document.querySelectorAll('#task-filters .chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderAgenda();
+}
+
+async function saveScheduledTask(e) {
+  e.preventDefault();
+  const fecha = document.getElementById('task-fecha').value || todayISO();
+  const tipo = document.getElementById('task-tipo').value;
+  const cliente = document.getElementById('task-cliente').value.trim().toUpperCase();
+  const titulo = document.getElementById('task-titulo').value.trim();
+
+  db.tasks.unshift({
+    id: 'TSK-' + Date.now(),
+    fecha,
+    tipo,
+    cliente,
+    titulo,
+    done: false
+  });
+
+  document.getElementById('task-cliente').value = '';
+  document.getElementById('task-titulo').value = '';
+  await persistData();
+  showToast('📅 Tarea / aviso programado en la agenda');
+}
+
+async function toggleTaskDone(id) {
+  const t = db.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  await persistData();
+  showToast(t.done ? '✅ Tarea completada' : 'Tarea marcada como pendiente');
+}
+
+async function deleteScheduledTask(id) {
+  if (!confirm('¿Eliminar esta tarea programada?')) return;
+  db.tasks = db.tasks.filter(x => x.id !== id);
+  await persistData();
+  showToast('Tarea eliminada');
+}
+
+async function toggleHabitDone(id) {
+  const h = db.habits.find(x => x.id === id);
+  if (!h) return;
+  h.done = !h.done;
+  await persistData();
+}
+
+async function addHabitItem(e) {
+  e.preventDefault();
+  const day = document.getElementById('habit-day').value;
+  const text = document.getElementById('habit-text').value.trim();
+  if (!text) return;
+
+  db.habits.push({
+    id: 'HAB-' + Date.now(),
+    day,
+    text,
+    done: false
+  });
+
+  document.getElementById('habit-text').value = '';
+  await persistData();
+  showToast('Hábito agregado a la rutina semanal');
+}
+
+async function deleteHabitItem(id) {
+  db.habits = db.habits.filter(x => x.id !== id);
+  await persistData();
+}
+
+async function resetWeeklyHabits() {
+  if (!confirm('¿Desmarcar todos los hábitos para iniciar una semana nueva?')) return;
+  db.habits.forEach(h => h.done = false);
+  await persistData();
+  showToast('↻ Rutina semanal reiniciada');
+}
+
+function renderAgenda() {
+  const listEl = document.getElementById('scheduled-tasks-list');
+  if (!listEl) return;
+
+  const today = todayISO();
+  let tasks = [...(db.tasks || [])].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+
+  if (activeTaskFilter === 'PENDIENTES') tasks = tasks.filter(t => !t.done);
+  else if (activeTaskFilter === 'HOY') tasks = tasks.filter(t => !t.done && t.fecha === today);
+  else if (activeTaskFilter === 'ATRASADAS') tasks = tasks.filter(t => !t.done && t.fecha < today);
+  else if (activeTaskFilter === 'HECHAS') tasks = tasks.filter(t => t.done);
+
+  listEl.innerHTML = tasks.length ? tasks.map(t => {
+    const isOverdue = !t.done && t.fecha < today;
+    const isToday = !t.done && t.fecha === today;
+    const cardClass = t.done ? 'task-done' : (isOverdue ? 'task-overdue' : (isToday ? 'task-today' : ''));
+    const badgeClass = t.tipo === 'GRABAR POLO' ? 'badge-purple' : (t.tipo === 'AVISO PAGO' ? 'badge-amber' : 'badge-blue');
+    const dateLabel = isOverdue ? `⚠️ Atrasada (${t.fecha})` : (isToday ? `📅 HOY (${t.fecha})` : `🗓 ${t.fecha}`);
+
+    const cliObj = findClientByComposite(t.cliente);
+    const waUrl = buildWhatsAppLinkForClient(cliObj, t.tipo);
+
+    return `
+      <div class="task-card ${cardClass}">
+        <div style="display:flex; align-items:flex-start; gap:12px; min-width:0; flex:1;">
+          <button class="task-check-btn ${t.done ? 'checked' : ''}" onclick="toggleTaskDone('${t.id}')">${t.done ? '✓' : ''}</button>
+          <div style="min-width:0; flex:1;">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:4px;">
+              <span class="kpi-badge ${badgeClass}">${t.tipo}</span>
+              <span class="muted" style="font-size:11.5px; font-weight:600;">${dateLabel}</span>
+            </div>
+            <div class="font-bold" style="font-size:13.5px; ${t.done ? 'text-decoration:line-through;' : ''}">${t.titulo}</div>
+            ${t.cliente ? `<div class="muted" style="font-size:12px; margin-top:2px;">💈 ${t.cliente}</div>` : ''}
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+          ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa">WhatsApp</a>` : ''}
+          <button class="btn-icon" onclick="deleteScheduledTask('${t.id}')" title="Eliminar">🗑</button>
+        </div>
+      </div>
+    `;
+  }).join('') : `<p class="muted" style="padding:18px; text-align:center;">No hay tareas en esta vista.</p>`;
+
+  const habitsEl = document.getElementById('habits-weekly-container');
+  if (habitsEl) {
+    const dayMap = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
+    const currentDayCode = dayMap[new Date().getDay()];
+    const dayOrder = { LUN: 1, MAR: 2, MIE: 3, JUE: 4, VIE: 5, SAB: 6, DOM: 7 };
+
+    const sortedHabits = [...(db.habits || [])].sort((a, b) => (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9));
+    const doneCount = sortedHabits.filter(h => h.done).length;
+    const totalCount = sortedHabits.length;
+    const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
+
+    document.getElementById('habit-progress-text').textContent = `${pct}% (${doneCount}/${totalCount})`;
+    document.getElementById('habit-progress-bar').style.width = `${pct}%`;
+
+    habitsEl.innerHTML = sortedHabits.map(h => {
+      const isTodayDay = h.day === currentDayCode;
+      return `
+        <div class="habit-row ${isTodayDay ? 'habit-today-highlight' : ''}">
+          <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+            <button class="task-check-btn ${h.done ? 'checked' : ''}" onclick="toggleHabitDone('${h.id}')">${h.done ? '✓' : ''}</button>
+            <span class="habit-day-pill">${h.day}</span>
+            <span style="font-size:12.5px; ${h.done ? 'text-decoration:line-through; opacity:0.6;' : ''}">${h.text}</span>
+          </div>
+          <button class="btn-icon" onclick="deleteHabitItem('${h.id}')" style="font-size:14px;" title="Quitar">✕</button>
+        </div>
+      `;
+    }).join('');
+  }
 }
 
 function quickPayment(barberia, barbero, saldo) {
@@ -528,31 +834,31 @@ function processWhatsAppAudioFile(file) {
       const cliList = db.clients.map(c => `${c.barberia} | ${c.barbero} (${c.zona})`).join('; ');
       const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
 
-      const prompt = `Sos el asistente administrativo de Rapibarbe (insumos de barbería en Argentina).
-Escuchá este audio de WhatsApp de Freddy. Puede contener UNA o MÚLTIPLES operaciones mezcladas (ventas fiadas, ventas contado, cobros/abonos y pedidos/encargos futuros de distintos clientes).
+      const prompt = `Sos el asistente administrativo de Rapibarbe (insumos de barbería en Argentina). Fecha de hoy: ${todayISO()}.
+Escuchá este audio de WhatsApp de Freddy. Puede contener UNA o MÚLTIPLES operaciones mezcladas:
+- Ventas fiadas ("VENTA FIADA")
+- Ventas contado ("VENTA CONTADO")
+- Cobros o abonos ("ABONO / PAGO")
+- Pedidos de productos para entregar luego ("PEDIDO")
+- Tareas o avisos programados para un día ("TAREA": por ejemplo avisar por WhatsApp a un barbero que pague, grabar video con polo barbero a un cliente, avisar visita).
 
 Clientes válidos: [${cliList}]
 Productos válidos: [${invList}]
-
-Reglas:
-- Si menciona que entregó/vendió mercadería a pagar después -> tipo = "VENTA FIADA".
-- Si menciona que vendió y le pagaron en el acto -> tipo = "VENTA CONTADO".
-- Si menciona que cobró plata de una deuda anterior -> tipo = "ABONO / PAGO".
-- Si menciona un encargo o pedido para llevar en el futuro ("me pidió", "anotame para el viernes", "encargó") -> tipo = "PEDIDO".
-- Separá cada cliente o movimiento distinto en un objeto independiente dentro del array "operaciones".
 
 Devolvé ÚNICAMENTE JSON válido sin markdown con esta estructura exacta:
 {
   "transcripcion": "transcripción completa y fiel del audio",
   "operaciones": [
     {
-      "tipo": "VENTA FIADA" | "VENTA CONTADO" | "ABONO / PAGO" | "PEDIDO",
+      "tipo": "VENTA FIADA" | "VENTA CONTADO" | "ABONO / PAGO" | "PEDIDO" | "TAREA",
+      "subtipoTarea": "AVISO PAGO" | "GRABAR POLO" | "AVISO RUTA" | "GENERAL",
+      "fechaProgramada": "YYYY-MM-DD",
       "cliente": "BARBERIA | BARBERO",
       "items": [{"codigo": "ART-XXX", "qty": 1}],
       "montoManual": 0,
       "abonoParcial": 0,
       "medio": "EFECTIVO" | "TRANSFERENCIA" | "CUENTA CORRIENTE",
-      "notas": "detalle o día de entrega"
+      "notas": "detalle o descripción de la tarea"
     }
   ]
 }`;
@@ -582,7 +888,7 @@ Devolvé ÚNICAMENTE JSON válido sin markdown con esta estructura exacta:
 
       const ops = Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed];
 
-      if (ops.length <= 1) {
+      if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
         closeBatchReview();
         applyParsedCommandToForm(ops[0] || {});
       } else {
@@ -590,7 +896,7 @@ Devolvé ÚNICAMENTE JSON válido sin markdown con esta estructura exacta:
         renderBatchReview(ops);
       }
 
-      if (dropHint) dropHint.innerHTML = `✅ Audio procesado (${ops.length} ${ops.length === 1 ? 'operación detectada' : 'operaciones detectadas'})`;
+      if (dropHint) dropHint.innerHTML = `✅ Audio procesado (${ops.length} ${ops.length === 1 ? 'acción detectada' : 'acciones detectadas'})`;
     } catch (err) {
       console.error(err);
       if (dropHint) dropHint.innerHTML = `❌ Error al procesar el audio. Verificá tu Gemini API Key.`;
@@ -616,7 +922,13 @@ function renderBatchReview(ops) {
         }
       });
     }
-    return { ...op, resolvedItems, totalCalculado: total };
+    return {
+      ...op,
+      fechaProgramada: op.fechaProgramada || todayISO(),
+      subtipoTarea: op.subtipoTarea || 'AVISO PAGO',
+      resolvedItems,
+      totalCalculado: total
+    };
   });
 
   const box = document.getElementById('batch-review-container');
@@ -624,30 +936,35 @@ function renderBatchReview(ops) {
   box.innerHTML = `
     <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.45); border-radius:14px; padding:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <strong style="color:#6ee7b7; font-size:13px;">📋 ${pendingBatchOps.length} Operaciones Detectadas en el Audio</strong>
+        <strong style="color:#6ee7b7; font-size:13px;">📋 ${pendingBatchOps.length} Acciones Detectadas</strong>
         <button type="button" class="btn-icon" onclick="closeBatchReview()" title="Cancelar lote">✕</button>
       </div>
       <div style="display:flex; flex-direction:column; gap:8px;">
         ${pendingBatchOps.map((op, idx) => {
+          const isTask = op.tipo === 'TAREA';
           const itemsDesc = op.resolvedItems.length
             ? op.resolvedItems.map(i => `${i.qty}x ${i.producto}`).join(', ')
             : (op.notas || 'Movimiento directo');
           return `
             <div style="background:rgba(8,12,24,0.88); border:1px solid rgba(59,130,246,0.28); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                <select onchange="pendingBatchOps[${idx}].tipo = this.value" style="padding:5px 8px; font-size:11.5px; font-weight:700; width:auto;">
+                <select onchange="pendingBatchOps[${idx}].tipo = this.value; renderBatchReview(pendingBatchOps);" style="padding:5px 8px; font-size:11.5px; font-weight:700; width:auto;">
                   <option value="VENTA FIADA" ${op.tipo === 'VENTA FIADA' ? 'selected' : ''}>📝 VENTA FIADA</option>
                   <option value="VENTA CONTADO" ${op.tipo === 'VENTA CONTADO' ? 'selected' : ''}>✅ VENTA CONTADO</option>
                   <option value="ABONO / PAGO" ${op.tipo === 'ABONO / PAGO' ? 'selected' : ''}>💵 ABONO / PAGO</option>
                   <option value="PEDIDO" ${op.tipo === 'PEDIDO' ? 'selected' : ''}>📦 PEDIDO</option>
+                  <option value="TAREA" ${op.tipo === 'TAREA' ? 'selected' : ''}>📅 TAREA / AVISO</option>
                 </select>
                 <button type="button" class="btn-icon" onclick="removeBatchItem(${idx})" style="color:#fca5a5; font-size:15px;" title="Quitar">🗑</button>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                 <input type="text" list="clientes-datalist" value="${op.cliente || ''}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="BARBERIA | BARBERO" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
-                <input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:100px; padding:6px 8px; text-align:right; font-weight:700;" />
+                ${isTask
+                  ? `<input type="date" value="${op.fechaProgramada}" onchange="pendingBatchOps[${idx}].fechaProgramada = this.value" style="width:130px; padding:6px 8px; font-size:12px;" />`
+                  : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:100px; padding:6px 8px; text-align:right; font-weight:700;" />`
+                }
               </div>
-              <div class="muted" style="font-size:11.5px;">${itemsDesc}</div>
+              <input type="text" value="${itemsDesc}" onchange="pendingBatchOps[${idx}].notas = this.value" style="padding:5px 8px; font-size:11.5px;" />
             </div>
           `;
         }).join('')}
@@ -655,7 +972,7 @@ function renderBatchReview(ops) {
       <button type="button" class="btn-primary btn-full" style="margin-top:12px;" onclick="saveAllBatchOperations()">✅ Confirmar y Guardar Todas (${pendingBatchOps.length})</button>
     </div>
   `;
-  showToast(`Se detectaron ${pendingBatchOps.length} operaciones. Revisalas y tocá Guardar Todas.`);
+  showToast(`Se detectaron ${pendingBatchOps.length} acciones. Revisalas y tocá Guardar Todas.`);
 }
 
 function removeBatchItem(idx) {
@@ -674,7 +991,7 @@ async function saveAllBatchOperations() {
   if (!pendingBatchOps.length) return;
   if (config.cloudKey && config.cloudBin) await syncFromCloud(true);
 
-  const fecha = document.getElementById('mov-fecha').value || new Date().toISOString().split('T')[0];
+  const fecha = document.getElementById('mov-fecha').value || todayISO();
 
   pendingBatchOps.forEach((op, index) => {
     const rawCli = (op.cliente || '').trim();
@@ -685,12 +1002,17 @@ async function saveAllBatchOperations() {
       barbero = parts[1].trim();
     }
 
-    if (op.tipo === 'PEDIDO') {
-      const matched = db.clients.find(c =>
-        (c.barberia || '').toUpperCase() === barberia.toUpperCase() &&
-        (!barbero || (c.barbero || '').toUpperCase() === barbero.toUpperCase())
-      ) || db.clients.find(c => (c.barberia || '').toUpperCase() === barberia.toUpperCase());
-
+    if (op.tipo === 'TAREA') {
+      db.tasks.unshift({
+        id: 'TSK-' + (Date.now() + index),
+        fecha: op.fechaProgramada || fecha,
+        tipo: op.subtipoTarea || 'AVISO PAGO',
+        cliente: rawCli.toUpperCase(),
+        titulo: op.notas || 'Tarea programada por audio',
+        done: false
+      });
+    } else if (op.tipo === 'PEDIDO') {
+      const matched = findClientByComposite(rawCli);
       db.orders.unshift({
         id: 'ORD-' + (Date.now() + index),
         fecha,
@@ -747,7 +1069,7 @@ async function saveAllBatchOperations() {
   closeBatchReview();
   document.getElementById('voice-input').value = '';
   await persistData();
-  showToast(`✅ ¡${count} operaciones guardadas y sincronizadas!`);
+  showToast(`✅ ¡${count} acciones guardadas en Historial y sincronizadas!`);
 }
 
 function applyParsedCommandToForm(parsed) {
@@ -782,7 +1104,7 @@ function applyParsedCommandToForm(parsed) {
       : (parsed.notas || document.getElementById('voice-input').value);
     document.getElementById('detected-order-summary').textContent = `${parsed.cliente || 'Cliente'}: ${summaryItems}`;
     banner.style.display = 'flex';
-    showToast('📦 Pedido detectado. Podés guardarlo directo en Pedidos.');
+    showToast('📦 Pedido detectado. Guardalo para sumarlo al Historial y Pedidos.');
   } else {
     lastDetectedOrder = null;
     banner.style.display = 'none';
@@ -793,16 +1115,11 @@ function applyParsedCommandToForm(parsed) {
 async function saveDetectedOrder() {
   if (!lastDetectedOrder) return;
   const rawCli = document.getElementById('mov-cliente-search').value.trim() || lastDetectedOrder.cliente || 'SIN CLIENTE';
-  const parts = rawCli.split('|');
-  const barberia = (parts[0] || '').trim().toUpperCase();
-  const barbero = (parts[1] || '').trim().toUpperCase();
-  const matched = db.clients.find(c =>
-    (c.barberia || '').toUpperCase() === barberia && (!barbero || (c.barbero || '').toUpperCase() === barbero)
-  ) || db.clients.find(c => (c.barberia || '').toUpperCase() === barberia);
+  const matched = findClientByComposite(rawCli);
 
   db.orders.unshift({
     id: 'ORD-' + Date.now(),
-    fecha: document.getElementById('mov-fecha').value || new Date().toISOString().split('T')[0],
+    fecha: document.getElementById('mov-fecha').value || todayISO(),
     cliente: rawCli.toUpperCase(),
     ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
     items: [...currentCart],
@@ -821,8 +1138,7 @@ async function saveDetectedOrder() {
   document.getElementById('mov-detalle').value = '';
   document.getElementById('mov-obs').value = '';
   await persistData();
-  showToast('📦 Pedido guardado en la bandeja de Pedidos');
-  switchTab('pedidos');
+  showToast('📦 Pedido guardado en Historial y bandeja de Pedidos');
 }
 
 /* --- DICTADO POR VOZ E INTERPRETACIÓN INTELIGENTE DE TEXTO --- */
@@ -853,11 +1169,12 @@ async function parseSmartCommand() {
     try {
       const cliList = db.clients.map(c => `${c.barberia} | ${c.barbero}`).join('; ');
       const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
-      const prompt = `Sos el asistente de Rapibarbe. Extraé en JSON estricto una o varias operaciones de este mensaje: "${text}".
+      const prompt = `Sos el asistente de Rapibarbe. Hoy es ${todayISO()}. Extraé en JSON estricto una o varias acciones de este mensaje: "${text}".
 Clientes válidos: [${cliList}]
 Productos válidos: [${invList}]
+Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
 Devolvé SOLO JSON válido con este formato exacto:
-{"operaciones":[{"tipo":"VENTA FIADA"|"VENTA CONTADO"|"ABONO / PAGO"|"PEDIDO","cliente":"BARBERIA | BARBERO","items":[{"codigo":"ART-XXX","qty":1}],"montoManual":0,"abonoParcial":0,"medio":"EFECTIVO"|"TRANSFERENCIA"|"CUENTA CORRIENTE","notas":""}]}`;
+{"operaciones":[{"tipo":"VENTA FIADA"|"VENTA CONTADO"|"ABONO / PAGO"|"PEDIDO"|"TAREA","subtipoTarea":"AVISO PAGO"|"GRABAR POLO"|"AVISO RUTA"|"GENERAL","fechaProgramada":"YYYY-MM-DD","cliente":"BARBERIA | BARBERO","items":[{"codigo":"ART-XXX","qty":1}],"montoManual":0,"abonoParcial":0,"medio":"EFECTIVO"|"TRANSFERENCIA"|"CUENTA CORRIENTE","notas":""}]}`;
 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${config.geminiKey}`, {
         method: 'POST',
@@ -869,7 +1186,7 @@ Devolvé SOLO JSON válido con este formato exacto:
       const parsed = JSON.parse(rawJson);
       const ops = Array.isArray(parsed.operaciones) ? parsed.operaciones : [parsed];
 
-      if (ops.length <= 1) {
+      if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
         closeBatchReview();
         applyParsedCommandToForm(ops[0] || {});
       } else {
@@ -933,11 +1250,7 @@ async function saveMovement(e) {
   const medio = document.getElementById('mov-medio').value;
 
   if (tipo === 'PEDIDO') {
-    const matched = db.clients.find(c =>
-      (c.barberia || '').toUpperCase() === barberia.toUpperCase() &&
-      (!barbero || (c.barbero || '').toUpperCase() === barbero.toUpperCase())
-    ) || db.clients.find(c => (c.barberia || '').toUpperCase() === barberia.toUpperCase());
-
+    const matched = findClientByComposite(rawCli);
     db.orders.unshift({
       id: 'ORD-' + Date.now(),
       fecha,
@@ -957,7 +1270,7 @@ async function saveMovement(e) {
     document.getElementById('mov-obs').value = '';
     document.getElementById('voice-input').value = '';
     await persistData();
-    showToast('📦 Pedido guardado en bandeja Pedidos');
+    showToast('📦 Pedido guardado en el Historial y bandeja Pedidos');
     return;
   }
 
@@ -1021,19 +1334,84 @@ function deleteMovement(id) {
 }
 
 function renderMovements() {
+  // 1. CALCULAR RESUMEN DE VENTAS DE PAPÁ (FREDDY) EN LA FECHA SELECCIONADA
+  const papaDateInput = document.getElementById('papa-day-date');
+  const selectedDay = (papaDateInput && papaDateInput.value) ? papaDateInput.value : todayISO();
+
+  let dayContado = 0, dayFiado = 0, dayCobrado = 0, dayVentasCount = 0;
+  let dayPedidosMonto = 0, dayPedidosCount = 0;
+
+  (db.movs || []).forEach(m => {
+    if (m.fecha === selectedDay) {
+      const monto = Number(m.monto) || 0;
+      if (m.tipo === 'VENTA CONTADO') { dayContado += monto; dayVentasCount++; }
+      if (m.tipo === 'VENTA FIADA') { dayFiado += monto; dayVentasCount++; }
+      if (m.tipo === 'ABONO / PAGO') { dayCobrado += monto; }
+    }
+  });
+
+  (db.orders || []).forEach(o => {
+    if (o.fecha === selectedDay) {
+      dayPedidosMonto += Number(o.totalEstimado) || 0;
+      dayPedidosCount++;
+    }
+  });
+
+  if (document.getElementById('papa-total-vendido')) {
+    document.getElementById('papa-total-vendido').textContent = fmtMoney(dayContado + dayFiado);
+    document.getElementById('papa-ventas-count').textContent = `${dayVentasCount} ${dayVentasCount === 1 ? 'venta registrada' : 'ventas registradas'}`;
+    document.getElementById('papa-contado-fiado').textContent = `${fmtMoney(dayContado)} / ${fmtMoney(dayFiado)}`;
+    document.getElementById('papa-cobrado-dia').textContent = fmtMoney(dayCobrado);
+    document.getElementById('papa-pedidos-dia').textContent = fmtMoney(dayPedidosMonto);
+    document.getElementById('papa-pedidos-count').textContent = `${dayPedidosCount} ${dayPedidosCount === 1 ? 'encargo' : 'encargos'} ese día`;
+    document.getElementById('papa-day-label').textContent = `Fecha consultada: ${selectedDay}`;
+  }
+
+  // 2. RENDERIZAR HISTORIAL COMPLETO (VENTAS + COBROS + PEDIDOS)
   const tbody = document.getElementById('all-movs-body');
-  tbody.innerHTML = [...db.movs].reverse().map(m => {
-    const badgeClass = m.tipo === 'ABONO / PAGO' ? 'badge-green' : (m.tipo === 'VENTA FIADA' ? 'badge-amber' : 'badge-blue');
+  if (!tbody) return;
+
+  const q = (document.getElementById('movs-history-search')?.value || '').toLowerCase();
+  const typeFilter = document.getElementById('movs-type-filter')?.value || 'TODOS';
+  const onlySelectedDate = document.getElementById('filter-movs-by-papa-date')?.checked || false;
+
+  const unifiedList = getUnifiedOperationsList().filter(item => {
+    if (onlySelectedDate && item.fecha !== selectedDay) return false;
+
+    if (typeFilter === 'VENTAS' && item.tipo !== 'VENTA FIADA' && item.tipo !== 'VENTA CONTADO') return false;
+    if (typeFilter === 'PEDIDO' && !item.isOrder) return false;
+    if (typeFilter === 'ABONO / PAGO' && item.tipo !== 'ABONO / PAGO') return false;
+
+    if (q) {
+      const hay = `${item.barberia} ${item.barbero} ${item.detalle} ${item.tipo} ${item.fecha}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  tbody.innerHTML = unifiedList.length ? unifiedList.map(m => {
+    let badgeClass = 'badge-blue';
+    if (m.tipo === 'ABONO / PAGO') badgeClass = 'badge-green';
+    else if (m.tipo === 'VENTA FIADA') badgeClass = 'badge-amber';
+    else if (m.isOrder) badgeClass = m.orderEstado === 'ENTREGADO' ? 'badge-green' : 'badge-purple';
+
+    const delAction = m.isOrder
+      ? `deleteOrder('${m.id}')`
+      : `deleteMovement('${m.id}')`;
+
     return `
       <tr>
         <td>${m.fecha}</td>
-        <td><div class="font-bold">${m.barberia}</div><div class="muted" style="font-size:11.5px;">${m.barbero} · ${m.detalle || ''}</div></td>
-        <td><span class="kpi-badge ${badgeClass}">${m.tipo}</span></td>
+        <td>
+          <div class="font-bold">${m.barberia}${m.barbero ? ' · ' + m.barbero : ''}</div>
+          <div class="muted" style="font-size:11.5px;">${m.detalle || ''}</div>
+        </td>
+        <td><span class="kpi-badge ${badgeClass}">${m.isOrder ? '📦 ' + m.tipo : m.tipo}</span></td>
         <td class="text-right font-bold">${fmtMoney(m.monto)}</td>
-        <td class="text-right"><button class="btn-icon" onclick="deleteMovement('${m.id}')" title="Eliminar">🗑</button></td>
+        <td class="text-right"><button class="btn-icon" onclick="${delAction}" title="Eliminar">🗑</button></td>
       </tr>
     `;
-  }).join('');
+  }).join('') : `<tr><td colspan="5" class="text-center muted" style="padding:24px;">No hay operaciones registradas con este filtro.</td></tr>`;
 }
 
 /* --- BANDEJA DE PEDIDOS & ENCARGOS --- */
@@ -1110,17 +1488,11 @@ async function saveQuickOrder(e) {
   const detail = document.getElementById('quick-order-detail').value.trim();
   const total = Number(document.getElementById('quick-order-total').value) || 0;
   const nota = document.getElementById('quick-order-nota').value.trim();
-
-  const parts = rawCli.split('|');
-  const barberia = (parts[0] || '').trim().toUpperCase();
-  const barbero = (parts[1] || '').trim().toUpperCase();
-  const matched = db.clients.find(c =>
-    (c.barberia || '').toUpperCase() === barberia && (!barbero || (c.barbero || '').toUpperCase() === barbero)
-  ) || db.clients.find(c => (c.barberia || '').toUpperCase() === barberia);
+  const matched = findClientByComposite(rawCli);
 
   db.orders.unshift({
     id: 'ORD-' + Date.now(),
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: todayISO(),
     cliente: rawCli.toUpperCase(),
     ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
     items: [],
@@ -1135,7 +1507,7 @@ async function saveQuickOrder(e) {
   document.getElementById('quick-order-total').value = 0;
   document.getElementById('quick-order-nota').value = '';
   await persistData();
-  showToast('📦 Pedido anotado correctamente');
+  showToast('📦 Pedido anotado y agregado al Historial');
 }
 
 async function deliverOrder(orderId, tipoVenta) {
@@ -1163,7 +1535,7 @@ async function deliverOrder(orderId, tipoVenta) {
 
   db.movs.push({
     id: 'MOV-' + Date.now(),
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: todayISO(),
     barberia,
     barbero,
     tipo: tipoVenta,
@@ -1317,7 +1689,7 @@ function exportBackup() {
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `Rapibarbe_Respaldo_${new Date().toISOString().slice(0,10)}.json`;
+  a.download = `Rapibarbe_Respaldo_${todayISO()}.json`;
   a.click();
 }
 
@@ -1329,8 +1701,8 @@ function importBackup(e) {
     try {
       const parsed = JSON.parse(ev.target.result);
       if (parsed.clients && parsed.inv) {
-        if (!Array.isArray(parsed.orders)) parsed.orders = [];
         db = parsed;
+        ensureDbArrays();
         persistData();
         showToast('Respaldo restaurado');
       }
@@ -1341,7 +1713,7 @@ function importBackup(e) {
 
 function resetToExcelDefault() {
   if (!confirm('¿Volver a los datos originales del Excel?')) return;
-  db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [] };
+  db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [], habits: JSON.parse(JSON.stringify(DEFAULT_HABITS)) };
   persistData();
   showToast('Datos originales restaurados');
 }
