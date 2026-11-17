@@ -28,6 +28,21 @@ let cachedGeminiModel = '';
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const todayISO = () => new Date().toISOString().split('T')[0];
 
+/* Normaliza tipos antiguos ("VENTA FIADA") al nuevo estándar ("VENTA A CREDITO") */
+function normalizeOpType(tipo) {
+  const t = (tipo || '').trim().toUpperCase();
+  if (t === 'VENTA FIADA' || t === 'VENTA A CRÉDITO' || t === 'VENTA A CREDITO') return 'VENTA A CREDITO';
+  if (t === 'VENTA DE CONTADO' || t === 'VENTA CONTADO') return 'VENTA CONTADO';
+  return t;
+}
+
+function getOpTypeLabel(tipo) {
+  const norm = normalizeOpType(tipo);
+  if (norm === 'VENTA A CREDITO') return 'VENTA A CRÉDITO';
+  if (norm === 'VENTA CONTADO') return 'VENTA DE CONTADO';
+  return tipo;
+}
+
 function escapeAttr(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
@@ -41,8 +56,11 @@ document.addEventListener('DOMContentLoaded', () => {
   applyMagicLinkFromUrl();
   loadLocalData();
   document.getElementById('mov-fecha').value = todayISO();
-  if (document.getElementById('papa-day-date')) {
-    document.getElementById('papa-day-date').value = todayISO();
+  if (document.getElementById('report-start-date')) {
+    document.getElementById('report-start-date').value = todayISO();
+  }
+  if (document.getElementById('report-end-date')) {
+    document.getElementById('report-end-date').value = todayISO();
   }
   if (document.getElementById('task-fecha')) {
     document.getElementById('task-fecha').value = todayISO();
@@ -298,7 +316,7 @@ function updatePin(e) {
 function triggerQuickAction(tipoOperacion) {
   switchTab('movimientos');
   const selectTipo = document.getElementById('mov-tipo');
-  selectTipo.value = tipoOperacion;
+  selectTipo.value = normalizeOpType(tipoOperacion);
   toggleProductPicker();
   document.getElementById('mov-cliente-search').focus();
 }
@@ -321,8 +339,9 @@ function getClientBalance(client) {
 
   db.movs.forEach(m => {
     if ((m.barberia || '').trim().toUpperCase() === b1 && (m.barbero || '').trim().toUpperCase() === b2) {
-      if (m.tipo === 'VENTA FIADA') saldo += Number(m.monto) || 0;
-      if (m.tipo === 'ABONO / PAGO') saldo -= Number(m.monto) || 0;
+      const normTipo = normalizeOpType(m.tipo);
+      if (normTipo === 'VENTA A CREDITO') saldo += Number(m.monto) || 0;
+      if (normTipo === 'ABONO / PAGO') saldo -= Number(m.monto) || 0;
     }
   });
   return saldo;
@@ -340,7 +359,7 @@ function renderAll() {
 }
 
 function renderKPIs() {
-  let totalDeuda = 0, deudoresCount = 0, totalCobrado = 0, ventasContado = 0, ventasFiadas = 0;
+  let totalDeuda = 0, deudoresCount = 0, totalCobrado = 0, ventasContado = 0, ventasCredito = 0;
 
   db.clients.forEach(c => {
     const saldo = getClientBalance(c);
@@ -349,9 +368,10 @@ function renderKPIs() {
 
   db.movs.forEach(m => {
     const monto = Number(m.monto) || 0;
-    if (m.tipo === 'ABONO / PAGO') totalCobrado += monto;
-    if (m.tipo === 'VENTA CONTADO') ventasContado += monto;
-    if (m.tipo === 'VENTA FIADA') ventasFiadas += monto;
+    const normTipo = normalizeOpType(m.tipo);
+    if (normTipo === 'ABONO / PAGO') totalCobrado += monto;
+    if (normTipo === 'VENTA CONTADO') ventasContado += monto;
+    if (normTipo === 'VENTA A CREDITO') ventasCredito += monto;
   });
 
   const pendingOrdersCount = (db.orders || []).filter(o => o.estado === 'PENDIENTE').length;
@@ -361,8 +381,8 @@ function renderKPIs() {
   document.getElementById('kpi-deuda').textContent = fmtMoney(totalDeuda);
   document.getElementById('kpi-deudores-count').textContent = `${deudoresCount} barberos con saldo activo`;
   document.getElementById('kpi-cobrado').textContent = fmtMoney(totalCobrado);
-  document.getElementById('kpi-ventas').textContent = fmtMoney(ventasContado + ventasFiadas);
-  document.getElementById('kpi-ventas-split').textContent = `Contado: ${fmtMoney(ventasContado)} · Fiado: ${fmtMoney(ventasFiadas)}`;
+  document.getElementById('kpi-ventas').textContent = fmtMoney(ventasContado + ventasCredito);
+  document.getElementById('kpi-ventas-split').textContent = `Contado: ${fmtMoney(ventasContado)} · Crédito: ${fmtMoney(ventasCredito)}`;
   document.getElementById('kpi-stock-bajo').textContent = db.inv.filter(i => Number(i.stock) <= 3).length;
   document.getElementById('kpi-pedidos-pendientes').textContent = pendingOrdersCount;
   document.getElementById('nav-orders-count').textContent = pendingOrdersCount;
@@ -472,7 +492,8 @@ function renderDashboard() {
 
   const unifiedRecent = getUnifiedOperationsList().slice(0, 6);
   document.getElementById('recent-movs-list').innerHTML = unifiedRecent.map(item => {
-    const isPay = item.tipo === 'ABONO / PAGO';
+    const normTipo = normalizeOpType(item.tipo);
+    const isPay = normTipo === 'ABONO / PAGO';
     const isOrder = item.isOrder;
     const valColor = isPay ? 'text-green' : (isOrder ? 'text-amber' : 'text-main');
     const prefix = isOrder ? '📦 ' : (isPay ? '+' : '');
@@ -480,7 +501,7 @@ function renderDashboard() {
       <div class="activity-item">
         <div style="min-width:0; flex:1;">
           <div class="font-bold" style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.barberia}${item.barbero ? ' — ' + item.barbero : ''}</div>
-          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.fecha} · ${item.detalle || item.tipo}</div>
+          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.fecha} · ${item.detalle || getOpTypeLabel(item.tipo)}</div>
         </div>
         <div class="font-bold ${valColor}" style="flex-shrink:0;">${prefix}${fmtMoney(item.monto)}</div>
       </div>
@@ -492,6 +513,7 @@ function renderDashboard() {
 function getUnifiedOperationsList() {
   const movEntries = (db.movs || []).map((m, idx) => ({
     ...m,
+    tipo: normalizeOpType(m.tipo),
     isOrder: false,
     sortIndex: idx
   }));
@@ -530,12 +552,28 @@ function getUnifiedOperationsList() {
   });
 }
 
-function setPapaDateToday() {
-  const input = document.getElementById('papa-day-date');
-  if (input) {
-    input.value = todayISO();
-    renderMovements();
+/* --- PRESETS DE FECHA INICIO Y FINAL --- */
+function setReportRangePreset(preset) {
+  const startEl = document.getElementById('report-start-date');
+  const endEl = document.getElementById('report-end-date');
+  if (!startEl || !endEl) return;
+
+  const now = new Date();
+  const endStr = todayISO();
+  let startStr = endStr;
+
+  if (preset === 'WEEK') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 6);
+    startStr = d.toISOString().split('T')[0];
+  } else if (preset === 'MONTH') {
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    startStr = d.toISOString().split('T')[0];
   }
+
+  startEl.value = startStr;
+  endEl.value = endStr;
+  renderMovements();
 }
 
 /* --- EDICIÓN COMPLETA DE CUALQUIER OPERACIÓN (VENTA, COBRO O PEDIDO) --- */
@@ -562,7 +600,7 @@ function openEditOperationModal(id, isOrder) {
     if (!mov) return;
     document.getElementById('edit-op-modal-title').textContent = '✏️ Editar Operación';
     document.getElementById('edit-op-fecha').value = mov.fecha || todayISO();
-    document.getElementById('edit-op-tipo').value = mov.tipo || 'VENTA FIADA';
+    document.getElementById('edit-op-tipo').value = normalizeOpType(mov.tipo) || 'VENTA A CREDITO';
     document.getElementById('edit-op-order-estado').value = 'PENDIENTE';
     document.getElementById('edit-op-cliente').value = mov.barbero ? `${mov.barberia} | ${mov.barbero}` : (mov.barberia || '');
     document.getElementById('edit-op-monto').value = Number(mov.monto) || 0;
@@ -640,7 +678,7 @@ async function saveEditedOperation(e) {
   const wasOrder = document.getElementById('edit-op-was-order').value === '1';
 
   const newFecha = document.getElementById('edit-op-fecha').value || todayISO();
-  const newTipo = document.getElementById('edit-op-tipo').value;
+  const newTipo = normalizeOpType(document.getElementById('edit-op-tipo').value);
   const newOrderEstado = document.getElementById('edit-op-order-estado').value;
   const rawCli = document.getElementById('edit-op-cliente').value.trim();
   const newMonto = Number(document.getElementById('edit-op-monto').value) || 0;
@@ -659,7 +697,7 @@ async function saveEditedOperation(e) {
 
   if (!wasOrder) {
     const oldMov = db.movs.find(m => m.id === id);
-    if (oldMov && oldMov.items && oldMov.items.length && oldMov.tipo !== 'ABONO / PAGO') {
+    if (oldMov && oldMov.items && oldMov.items.length && normalizeOpType(oldMov.tipo) !== 'ABONO / PAGO') {
       oldMov.items.forEach(it => {
         const invItem = db.inv.find(x => x.codigo === it.codigo);
         if (invItem) invItem.stock = Number(invItem.stock) + Number(it.qty);
@@ -703,7 +741,7 @@ async function saveEditedOperation(e) {
       });
     }
 
-    const finalDetalle = newDetalle || (editOpCart.length ? editOpCart.map(i => `${i.qty}x ${i.producto}`).join(', ') : newTipo);
+    const finalDetalle = newDetalle || (editOpCart.length ? editOpCart.map(i => `${i.qty}x ${i.producto}`).join(', ') : getOpTypeLabel(newTipo));
 
     if (wasOrder) {
       db.orders = db.orders.filter(o => o.id !== id);
@@ -999,7 +1037,7 @@ function toggleProductPicker() {
   document.getElementById('product-picker-box').style.display = isAbono ? 'none' : 'block';
   const abonoParcialGroup = document.getElementById('abono-parcial-group');
   if (abonoParcialGroup) {
-    abonoParcialGroup.style.display = (tipo === 'VENTA FIADA') ? 'block' : 'none';
+    abonoParcialGroup.style.display = (normalizeOpType(tipo) === 'VENTA A CREDITO') ? 'block' : 'none';
   }
 }
 
@@ -1097,16 +1135,16 @@ function buildSmartExtractionPrompt(extraText = '') {
   const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
 
   return `Sos el asistente administrativo de Rapibarbe (insumos de barbería en Argentina). Fecha de hoy: ${todayISO()}.
-Analizá este audio o resumen estructurado de ventas, cobros, pedidos y tareas de Freddy y convertilo en una lista plana de operaciones individuales:
+Analizá este audio o resumen estructurado de ventas a crédito, ventas de contado, cobros, pedidos y tareas de Freddy y convertilo en una lista plana de operaciones individuales:
 ${extraText ? `"""\n${extraText}\n"""` : ''}
 
 Clientes existentes: [${cliList}]
 Productos en stock: [${invList}]
 
 REGLAS CRÍTICAS DE DESGLOSE:
-1. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva, separalo en DOS operaciones en el array:
+1. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva a crédito, separalo en DOS operaciones en el array:
    - Operación A: tipo "ABONO / PAGO" por el monto abonado.
-   - Operación B: tipo "VENTA FIADA" por la mercadería nueva llevada.
+   - Operación B: tipo "VENTA A CREDITO" por la mercadería nueva llevada.
 2. Si un cliente deja SEÑA por un PEDIDO pendiente, generá:
    - Operación A: tipo "PEDIDO", montoManual: total, sena: seña.
    - Operación B: tipo "ABONO / PAGO" por el monto de la seña SOLO si no figura ya aparte como cobro del día.
@@ -1119,7 +1157,7 @@ Devolvé ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
   "transcripcion": "resumen breve",
   "operaciones": [
     {
-      "tipo": "VENTA FIADA",
+      "tipo": "VENTA A CREDITO",
       "subtipoTarea": "AVISO PAGO",
       "fechaProgramada": "${todayISO()}",
       "cliente": "BARBERIA | BARBERO",
@@ -1309,7 +1347,7 @@ function parseStructuredSummaryLocally(rawText) {
       }
       if (prodVal > 0) {
         ops.push({
-          tipo: 'VENTA FIADA',
+          tipo: 'VENTA A CREDITO',
           cliente: clienteFmt,
           zona: zonaFmt,
           items: [],
@@ -1331,7 +1369,7 @@ function parseStructuredSummaryLocally(rawText) {
 
       if (prodVal > 0) {
         ops.push({
-          tipo: 'VENTA FIADA',
+          tipo: 'VENTA A CREDITO',
           cliente: clienteFmt,
           zona: zonaFmt,
           items: [],
@@ -1374,7 +1412,7 @@ function parseStructuredSummaryLocally(rawText) {
     const isContado = /pagado completo|contado|efectivo/i.test(paySeg) && !/pendiente|debe:\s*\$\s*[1-9]/i.test(rest);
 
     ops.push({
-      tipo: isContado ? 'VENTA CONTADO' : 'VENTA FIADA',
+      tipo: isContado ? 'VENTA CONTADO' : 'VENTA A CREDITO',
       cliente: clienteFmt,
       zona: zonaFmt,
       items: [],
@@ -1452,6 +1490,7 @@ function renderBatchReview(ops) {
     }
     return {
       ...op,
+      tipo: normalizeOpType(op.tipo),
       cliente: op.cliente || 'CLIENTE SIN NOMBRE',
       zona: op.zona || '',
       sena: Number(op.sena) || 0,
@@ -1481,8 +1520,8 @@ function renderBatchReview(ops) {
             <div style="background:rgba(8,12,24,0.88); border:1px solid rgba(59,130,246,0.28); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
                 <select onchange="pendingBatchOps[${idx}].tipo = this.value; renderBatchReview(pendingBatchOps);" style="padding:5px 8px; font-size:11.5px; font-weight:700; width:auto;">
-                  <option value="VENTA FIADA" ${op.tipo === 'VENTA FIADA' ? 'selected' : ''}>📝 VENTA FIADA</option>
-                  <option value="VENTA CONTADO" ${op.tipo === 'VENTA CONTADO' ? 'selected' : ''}>✅ VENTA CONTADO</option>
+                  <option value="VENTA A CREDITO" ${op.tipo === 'VENTA A CREDITO' ? 'selected' : ''}>📝 VENTA A CRÉDITO</option>
+                  <option value="VENTA CONTADO" ${op.tipo === 'VENTA CONTADO' ? 'selected' : ''}>✅ VENTA DE CONTADO</option>
                   <option value="ABONO / PAGO" ${op.tipo === 'ABONO / PAGO' ? 'selected' : ''}>💵 ABONO / PAGO</option>
                   <option value="PEDIDO" ${op.tipo === 'PEDIDO' ? 'selected' : ''}>📦 PEDIDO</option>
                   <option value="TAREA" ${op.tipo === 'TAREA' ? 'selected' : ''}>📅 TAREA / AVISO</option>
@@ -1559,6 +1598,7 @@ async function saveAllBatchOperations() {
   const fecha = document.getElementById('mov-fecha').value || todayISO();
 
   pendingBatchOps.forEach((op, index) => {
+    const normOpTipo = normalizeOpType(op.tipo);
     const rawCli = (op.cliente || 'CLIENTE SIN NOMBRE').trim();
     let barberia = rawCli, barbero = '';
     if (rawCli.includes('|')) {
@@ -1569,7 +1609,7 @@ async function saveAllBatchOperations() {
 
     ensureClientExists(barberia, barbero, op.zona);
 
-    if (op.tipo === 'TAREA') {
+    if (normOpTipo === 'TAREA') {
       db.tasks.unshift({
         id: 'TSK-' + (Date.now() + index),
         fecha: op.fechaProgramada || fecha,
@@ -1578,7 +1618,7 @@ async function saveAllBatchOperations() {
         titulo: op.notas || 'Tarea programada por IA',
         done: false
       });
-    } else if (op.tipo === 'PEDIDO') {
+    } else if (normOpTipo === 'PEDIDO') {
       const matched = findClientByComposite(rawCli);
       db.orders.unshift({
         id: 'ORD-' + (Date.now() + index),
@@ -1593,7 +1633,7 @@ async function saveAllBatchOperations() {
         notas: op.notas || ''
       });
     } else {
-      if (op.resolvedItems.length && op.tipo !== 'ABONO / PAGO') {
+      if (op.resolvedItems.length && normOpTipo !== 'ABONO / PAGO') {
         op.resolvedItems.forEach(item => {
           const invItem = db.inv.find(x => x.codigo === item.codigo);
           if (invItem) invItem.stock = Number(invItem.stock) - item.qty;
@@ -1602,14 +1642,14 @@ async function saveAllBatchOperations() {
 
       const detalleText = op.resolvedItems.length
         ? op.resolvedItems.map(i => `${i.qty}x ${i.producto}`).join(', ')
-        : (op.notas || op.tipo);
+        : (op.notas || getOpTypeLabel(normOpTipo));
 
       db.movs.push({
         id: 'MOV-' + (Date.now() + index),
         fecha,
         barberia: barberia.toUpperCase(),
         barbero: barbero.toUpperCase(),
-        tipo: op.tipo,
+        tipo: normOpTipo,
         detalle: detalleText,
         medio: op.medio || 'EFECTIVO',
         monto: op.totalCalculado,
@@ -1617,14 +1657,14 @@ async function saveAllBatchOperations() {
         obs: op.notas || ''
       });
 
-      if (op.tipo === 'VENTA FIADA' && Number(op.abonoParcial) > 0) {
+      if (normOpTipo === 'VENTA A CREDITO' && Number(op.abonoParcial) > 0) {
         db.movs.push({
           id: 'MOV-' + (Date.now() + index + 500),
           fecha,
           barberia: barberia.toUpperCase(),
           barbero: barbero.toUpperCase(),
           tipo: 'ABONO / PAGO',
-          detalle: 'Entrega a cuenta en el momento de la venta',
+          detalle: 'Entrega a cuenta en el momento de la venta a crédito',
           medio: op.medio || 'EFECTIVO',
           monto: Number(op.abonoParcial),
           obs: ''
@@ -1651,7 +1691,8 @@ function applyParsedCommandToForm(parsed) {
   document.getElementById('mov-detalle').value = '';
   document.getElementById('mov-obs').value = parsed.notas || '';
 
-  if (parsed.tipo) document.getElementById('mov-tipo').value = parsed.tipo;
+  const normTipo = normalizeOpType(parsed.tipo);
+  if (normTipo) document.getElementById('mov-tipo').value = normTipo;
   toggleProductPicker();
   if (parsed.cliente) document.getElementById('mov-cliente-search').value = parsed.cliente;
   if (parsed.medio) document.getElementById('mov-medio').value = parsed.medio;
@@ -1668,7 +1709,7 @@ function applyParsedCommandToForm(parsed) {
   }
 
   const banner = document.getElementById('detected-order-banner');
-  if (parsed.tipo === 'PEDIDO') {
+  if (normTipo === 'PEDIDO') {
     lastDetectedOrder = parsed;
     const summaryItems = currentCart.length
       ? currentCart.map(i => `${i.qty}x ${i.producto}`).join(', ')
@@ -1738,7 +1779,6 @@ async function parseSmartCommand() {
 
   const dropHint = document.getElementById('drop-hint-text');
 
-  // 1. Si es un resumen estructurado con viñetas (- Cliente: ...), se desglosa en 0ms sin esperar a internet
   const instantLocalOps = parseStructuredSummaryLocally(text);
   if (instantLocalOps.length >= 2) {
     document.getElementById('detected-order-banner').style.display = 'none';
@@ -1747,7 +1787,6 @@ async function parseSmartCommand() {
     return;
   }
 
-  // 2. Para frases libres o dictado, usa Gemini con indicador visible de carga
   if (config.geminiKey) {
     const aiBtn = document.querySelector('button[onclick="parseSmartCommand()"]');
     const originalBtnText = aiBtn ? aiBtn.innerHTML : '✨ Interpretar con IA';
@@ -1806,7 +1845,7 @@ async function saveMovement(e) {
 
     ensureClientExists(barberia, barbero);
 
-    const tipo = document.getElementById('mov-tipo').value;
+    const tipo = normalizeOpType(document.getElementById('mov-tipo').value);
     const monto = Number(document.getElementById('mov-monto').value) || 0;
     const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
     const fecha = document.getElementById('mov-fecha').value;
@@ -1858,14 +1897,14 @@ async function saveMovement(e) {
       obs: document.getElementById('mov-obs').value.trim()
     });
 
-    if (tipo === 'VENTA FIADA' && abonoParcial > 0) {
+    if (tipo === 'VENTA A CREDITO' && abonoParcial > 0) {
       db.movs.push({
         id: 'MOV-' + (Date.now() + 1),
         fecha,
         barberia: barberia.toUpperCase(),
         barbero: barbero.toUpperCase(),
         tipo: 'ABONO / PAGO',
-        detalle: 'Entrega a cuenta en el momento de la venta',
+        detalle: 'Entrega a cuenta en el momento de la venta a crédito',
         medio,
         monto: abonoParcial,
         obs: ''
@@ -1892,7 +1931,7 @@ async function saveMovement(e) {
 function deleteMovement(id) {
   if (!confirm('¿Eliminar este movimiento? Se recalculará el saldo y se devolverá el stock si tenía productos.')) return;
   const mov = db.movs.find(m => m.id === id);
-  if (mov && mov.items && mov.items.length && mov.tipo !== 'ABONO / PAGO') {
+  if (mov && mov.items && mov.items.length && normalizeOpType(mov.tipo) !== 'ABONO / PAGO') {
     mov.items.forEach(it => {
       const invItem = db.inv.find(x => x.codigo === it.codigo);
       if (invItem) invItem.stock = Number(invItem.stock) + Number(it.qty);
@@ -1904,36 +1943,84 @@ function deleteMovement(id) {
 }
 
 function renderMovements() {
-  const papaDateInput = document.getElementById('papa-day-date');
-  const selectedDay = (papaDateInput && papaDateInput.value) ? papaDateInput.value : todayISO();
+  const startInput = document.getElementById('report-start-date');
+  const endInput = document.getElementById('report-end-date');
+  let startDate = (startInput && startInput.value) ? startInput.value : todayISO();
+  let endDate = (endInput && endInput.value) ? endInput.value : todayISO();
 
-  let dayContado = 0, dayFiado = 0, dayCobrado = 0, dayVentasCount = 0;
-  let dayPedidosMonto = 0, dayPedidosCount = 0;
+  if (startDate > endDate) {
+    const tmp = startDate;
+    startDate = endDate;
+    endDate = tmp;
+  }
+
+  let rangeContado = 0, rangeContadoCount = 0;
+  let rangeCredito = 0, rangeCreditoCount = 0;
+  let rangePedido = 0, rangePedidoCount = 0;
+  let rangeCobrado = 0;
 
   (db.movs || []).forEach(m => {
-    if (m.fecha === selectedDay) {
+    if (m.fecha >= startDate && m.fecha <= endDate) {
       const monto = Number(m.monto) || 0;
-      if (m.tipo === 'VENTA CONTADO') { dayContado += monto; dayVentasCount++; }
-      if (m.tipo === 'VENTA FIADA') { dayFiado += monto; dayVentasCount++; }
-      if (m.tipo === 'ABONO / PAGO') { dayCobrado += monto; }
+      const normTipo = normalizeOpType(m.tipo);
+      if (normTipo === 'VENTA CONTADO') { rangeContado += monto; rangeContadoCount++; }
+      if (normTipo === 'VENTA A CREDITO') { rangeCredito += monto; rangeCreditoCount++; }
+      if (normTipo === 'ABONO / PAGO') { rangeCobrado += monto; }
     }
   });
 
   (db.orders || []).forEach(o => {
-    if (o.fecha === selectedDay) {
-      dayPedidosMonto += Number(o.totalEstimado) || 0;
-      dayPedidosCount++;
+    if (o.fecha >= startDate && o.fecha <= endDate) {
+      rangePedido += Number(o.totalEstimado) || 0;
+      rangePedidoCount++;
     }
   });
 
-  if (document.getElementById('papa-total-vendido')) {
-    document.getElementById('papa-total-vendido').textContent = fmtMoney(dayContado + dayFiado);
-    document.getElementById('papa-ventas-count').textContent = `${dayVentasCount} ${dayVentasCount === 1 ? 'venta registrada' : 'ventas registradas'}`;
-    document.getElementById('papa-contado-fiado').textContent = `${fmtMoney(dayContado)} / ${fmtMoney(dayFiado)}`;
-    document.getElementById('papa-cobrado-dia').textContent = fmtMoney(dayCobrado);
-    document.getElementById('papa-pedidos-dia').textContent = fmtMoney(dayPedidosMonto);
-    document.getElementById('papa-pedidos-count').textContent = `${dayPedidosCount} ${dayPedidosCount === 1 ? 'encargo' : 'encargos'} ese día`;
-    document.getElementById('papa-day-label').textContent = `Fecha consultada: ${selectedDay}`;
+  const incContado = document.getElementById('chk-sum-contado')?.checked ?? true;
+  const incCredito = document.getElementById('chk-sum-credito')?.checked ?? true;
+  const incPedido = document.getElementById('chk-sum-pedido')?.checked ?? true;
+
+  let totalSeleccionado = 0;
+  let countSeleccionado = 0;
+  const activeLabels = [];
+
+  if (incContado) {
+    totalSeleccionado += rangeContado;
+    countSeleccionado += rangeContadoCount;
+    activeLabels.push('Contado');
+  }
+  if (incCredito) {
+    totalSeleccionado += rangeCredito;
+    countSeleccionado += rangeCreditoCount;
+    activeLabels.push('Crédito');
+  }
+  if (incPedido) {
+    totalSeleccionado += rangePedido;
+    countSeleccionado += rangePedidoCount;
+    activeLabels.push('A Pedido');
+  }
+
+  if (document.getElementById('report-total-seleccionado')) {
+    document.getElementById('report-total-seleccionado').textContent = fmtMoney(totalSeleccionado);
+    document.getElementById('report-selected-tags').textContent = activeLabels.length ? activeLabels.join(' + ') : 'Ninguno seleccionado';
+    document.getElementById('report-total-count').innerHTML = `${countSeleccionado} ${countSeleccionado === 1 ? 'operación incluida' : 'operaciones incluidas'} · Cobrado abonos: <b class="text-green">${fmtMoney(rangeCobrado)}</b>`;
+
+    document.getElementById('report-contado-monto').textContent = fmtMoney(rangeContado);
+    document.getElementById('report-contado-count').textContent = `${rangeContadoCount} ${rangeContadoCount === 1 ? 'venta' : 'ventas'}`;
+
+    document.getElementById('report-credito-monto').textContent = fmtMoney(rangeCredito);
+    document.getElementById('report-credito-count').textContent = `${rangeCreditoCount} ${rangeCreditoCount === 1 ? 'venta' : 'ventas'}`;
+
+    document.getElementById('report-pedido-monto').textContent = fmtMoney(rangePedido);
+    document.getElementById('report-pedido-count').textContent = `${rangePedidoCount} ${rangePedidoCount === 1 ? 'pedido' : 'pedidos'}`;
+
+    document.getElementById('report-range-label').textContent = startDate === endDate
+      ? `Día: ${startDate}`
+      : `Período: ${startDate} al ${endDate}`;
+
+    document.getElementById('card-chk-contado')?.classList.toggle('report-card-off', !incContado);
+    document.getElementById('card-chk-credito')?.classList.toggle('report-card-off', !incCredito);
+    document.getElementById('card-chk-pedido')?.classList.toggle('report-card-off', !incPedido);
   }
 
   const tbody = document.getElementById('all-movs-body');
@@ -1941,29 +2028,34 @@ function renderMovements() {
 
   const q = (document.getElementById('movs-history-search')?.value || '').toLowerCase();
   const typeFilter = document.getElementById('movs-type-filter')?.value || 'TODOS';
-  const onlySelectedDate = document.getElementById('filter-movs-by-papa-date')?.checked || false;
+  const onlySelectedRange = document.getElementById('filter-movs-by-range')?.checked || false;
 
   const unifiedList = getUnifiedOperationsList().filter(item => {
-    if (onlySelectedDate && item.fecha !== selectedDay) return false;
+    if (onlySelectedRange && (item.fecha < startDate || item.fecha > endDate)) return false;
 
-    if (typeFilter === 'VENTAS' && item.tipo !== 'VENTA FIADA' && item.tipo !== 'VENTA CONTADO') return false;
+    const normTipo = normalizeOpType(item.tipo);
+    if (typeFilter === 'VENTAS' && normTipo !== 'VENTA A CREDITO' && normTipo !== 'VENTA CONTADO') return false;
+    if (typeFilter === 'VENTA CONTADO' && normTipo !== 'VENTA CONTADO') return false;
+    if (typeFilter === 'VENTA A CREDITO' && normTipo !== 'VENTA A CREDITO') return false;
     if (typeFilter === 'PEDIDO' && !item.isOrder) return false;
-    if (typeFilter === 'ABONO / PAGO' && item.tipo !== 'ABONO / PAGO') return false;
+    if (typeFilter === 'ABONO / PAGO' && normTipo !== 'ABONO / PAGO') return false;
 
     if (q) {
-      const hay = `${item.barberia} ${item.barbero} ${item.detalle} ${item.tipo} ${item.fecha}`.toLowerCase();
+      const hay = `${item.barberia} ${item.barbero} ${item.detalle} ${getOpTypeLabel(item.tipo)} ${item.fecha}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 
   tbody.innerHTML = unifiedList.length ? unifiedList.map(m => {
+    const normTipo = normalizeOpType(m.tipo);
     let badgeClass = 'badge-blue';
-    if (m.tipo === 'ABONO / PAGO') badgeClass = 'badge-green';
-    else if (m.tipo === 'VENTA FIADA') badgeClass = 'badge-amber';
+    if (normTipo === 'ABONO / PAGO') badgeClass = 'badge-green';
+    else if (normTipo === 'VENTA A CREDITO') badgeClass = 'badge-amber';
     else if (m.isOrder) badgeClass = m.orderEstado === 'ENTREGADO' ? 'badge-green' : 'badge-purple';
 
     const delAction = m.isOrder ? `deleteOrder('${m.id}')` : `deleteMovement('${m.id}')`;
+    const badgeText = m.isOrder ? '📦 ' + m.tipo : getOpTypeLabel(m.tipo);
 
     return `
       <tr>
@@ -1972,7 +2064,7 @@ function renderMovements() {
           <div class="font-bold">${m.barberia}${m.barbero ? ' · ' + m.barbero : ''}</div>
           <div class="muted" style="font-size:11.5px;">${m.detalle || ''}</div>
         </td>
-        <td><span class="kpi-badge ${badgeClass}">${m.isOrder ? '📦 ' + m.tipo : m.tipo}</span></td>
+        <td><span class="kpi-badge ${badgeClass}">${badgeText}</span></td>
         <td class="text-right font-bold">${fmtMoney(m.monto)}</td>
         <td class="text-right" style="white-space:nowrap;">
           <div class="action-icon-group">
@@ -2022,8 +2114,8 @@ function renderOrders() {
     const isPending = o.estado === 'PENDIENTE';
     const actionBtns = isPending
       ? `<div class="action-icon-group">
-           <button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA FIADA')" title="Entregar Fiado (por el saldo restante)">Fiado</button>
-           <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar Contado (por el saldo restante)">Contado</button>
+           <button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA A CREDITO')" title="Entregar a Crédito (por el saldo restante)">A Crédito</button>
+           <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar de Contado (por el saldo restante)">Contado</button>
            <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
            <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
          </div>`
@@ -2099,11 +2191,13 @@ async function saveQuickOrder(e) {
 async function deliverOrder(orderId, tipoVenta) {
   const ord = db.orders.find(o => o.id === orderId);
   if (!ord) return;
+  const normVenta = normalizeOpType(tipoVenta);
+  const labelVenta = getOpTypeLabel(normVenta);
   const sena = Number(ord.sena) || 0;
   const saldoRestante = Math.max(0, (Number(ord.totalEstimado) || 0) - sena);
   const confirmMsg = sena > 0
-    ? `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${tipoVenta})?\nTotal: ${fmtMoney(ord.totalEstimado)} | Seña ya cobrada: ${fmtMoney(sena)} | Saldo a registrar ahora: ${fmtMoney(saldoRestante)}`
-    : `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${tipoVenta}) por ${fmtMoney(saldoRestante)}?`;
+    ? `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${labelVenta})?\nTotal: ${fmtMoney(ord.totalEstimado)} | Seña ya cobrada: ${fmtMoney(sena)} | Saldo a registrar ahora: ${fmtMoney(saldoRestante)}`
+    : `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${labelVenta}) por ${fmtMoney(saldoRestante)}?`;
 
   if (!confirm(confirmMsg)) return;
 
@@ -2128,9 +2222,9 @@ async function deliverOrder(orderId, tipoVenta) {
       fecha: todayISO(),
       barberia,
       barbero,
-      tipo: tipoVenta,
+      tipo: normVenta,
       detalle: detalleText,
-      medio: tipoVenta === 'VENTA FIADA' ? 'CUENTA CORRIENTE' : 'EFECTIVO',
+      medio: normVenta === 'VENTA A CREDITO' ? 'CUENTA CORRIENTE' : 'EFECTIVO',
       monto: saldoRestante,
       items: ord.items || [],
       obs: ord.notas || 'Pedido entregado'
