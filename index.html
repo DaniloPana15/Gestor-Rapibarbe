@@ -83,17 +83,17 @@
         <div class="balance-amount" id="kpi-deuda">$0</div>
         <div class="balance-trend">
           <span class="trend-pill" id="kpi-deudores-count">0 barberos con saldo activo</span>
-          <span class="trend-sub" id="kpi-ventas-split">Contado: $0 · Fiado: $0</span>
+          <span class="trend-sub" id="kpi-ventas-split">Contado: $0 · Crédito: $0</span>
         </div>
       </div>
 
       <!-- 4 ACCIONES RÁPIDAS TIPO BILLETERA -->
       <div class="quick-actions-grid">
-        <button class="qa-item" onclick="triggerQuickAction('VENTA FIADA')">
+        <button class="qa-item" onclick="triggerQuickAction('VENTA A CREDITO')">
           <div class="qa-box">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
           </div>
-          <span>Fiar Venta</span>
+          <span>A Crédito</span>
         </button>
 
         <button class="qa-item" onclick="triggerQuickAction('ABONO / PAGO')">
@@ -307,7 +307,7 @@
       </div>
     </main>
 
-    <!-- TAB 2: CARGAR VENTA, COBRO O PEDIDO + RESUMEN DIARIO PAPÁ + HISTORIAL COMPLETO -->
+    <!-- TAB 2: CARGAR VENTA, COBRO O PEDIDO + ANALÍTICA POR PERÍODO + HISTORIAL COMPLETO -->
     <main id="tab-movimientos" class="tab-content">
       <div class="two-col-form">
         <div class="glass-card panel-box">
@@ -326,7 +326,7 @@
             </div>
             
             <div class="drop-hint" id="drop-hint-text">
-              💡 Arrastrá un audio de WhatsApp de Freddy acá (puede incluir ventas, cobros, pedidos y avisos/tareas para agendar):
+              💡 Arrastrá un audio de WhatsApp de Freddy acá (puede incluir ventas a crédito, contado, cobros, pedidos y tareas):
             </div>
 
             <textarea id="voice-input" rows="2" placeholder="Ej: Cobré 50 mil de Lucas, anotame pedido de 3 capas para Pocho, y agendame avisarle a Matías el jueves que pague"></textarea>
@@ -359,8 +359,8 @@
               <div class="form-group">
                 <label>Tipo de Operación</label>
                 <select id="mov-tipo" onchange="toggleProductPicker()" required>
-                  <option value="VENTA FIADA">📝 VENTA FIADA (Suma deuda)</option>
-                  <option value="VENTA CONTADO">✅ VENTA CONTADO (No altera deuda)</option>
+                  <option value="VENTA A CREDITO">📝 VENTA A CRÉDITO (Suma deuda)</option>
+                  <option value="VENTA CONTADO">✅ VENTA DE CONTADO (No altera deuda)</option>
                   <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
                   <option value="PEDIDO">📦 PEDIDO / ENCARGO (Historial + Bandeja Pedidos)</option>
                 </select>
@@ -397,14 +397,14 @@
                 <select id="mov-medio">
                   <option value="EFECTIVO">Efectivo</option>
                   <option value="TRANSFERENCIA">Transferencia / MP</option>
-                  <option value="CUENTA CORRIENTE">Cuenta Corriente (Fiado)</option>
+                  <option value="CUENTA CORRIENTE">Cuenta Corriente (Venta a Crédito)</option>
                 </select>
               </div>
             </div>
 
             <div class="form-group" id="abono-parcial-group">
               <label>Entrega / Abono parcial en el momento ($ - Opcional)</label>
-              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="Si llevó fiado pero dejó plata, ponela acá" />
+              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="Si llevó a crédito pero dejó plata, ponela acá" />
             </div>
 
             <div class="form-group">
@@ -421,45 +421,80 @@
           </form>
         </div>
 
-        <!-- COLUMNA DERECHA: RESUMEN DIARIO DE PAPÁ + HISTORIAL DE OPERACIONES (CON EDICIÓN) -->
+        <!-- COLUMNA DERECHA: REPORTE POR RANGO DE FECHAS + HISTORIAL DE OPERACIONES -->
         <div class="side-stack">
-          <!-- APARTADO: CUÁNTO VENDIÓ PAPÁ EN UN DÍA ESPECÍFICO -->
+          <!-- APARTADO: REPORTE DE VENTAS POR PERÍODO Y MODALIDAD -->
           <div class="glass-card panel-box daily-papa-card">
             <div class="panel-head" style="margin-bottom:12px;">
               <div>
-                <h3>📊 Resumen del Día — Ventas de Papá (Freddy)</h3>
-                <p class="muted">Elegí cualquier fecha para ver cuánto vendió, cobró y anotó ese día.</p>
+                <h3>📊 Resumen de Ventas por Período</h3>
+                <p class="muted">Elegí fecha inicio y final y marcá qué modalidades querés sumar.</p>
               </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <input type="date" id="papa-day-date" onchange="renderMovements()" style="width:155px; padding:8px 10px; font-size:13px;" />
-                <button type="button" class="btn-sm btn-pay" onclick="setPapaDateToday()">Hoy</button>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('TODAY')">Hoy</button>
+                <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('WEEK')">7 días</button>
+                <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('MONTH')">Este Mes</button>
               </div>
             </div>
 
+            <!-- SELECTORES FECHA INICIO Y FECHA FINAL -->
+            <div class="form-row" style="margin-bottom:12px;">
+              <div class="form-group">
+                <label>Desde (Fecha Inicio)</label>
+                <input type="date" id="report-start-date" onchange="renderMovements()" style="padding:8px 10px; font-size:13px;" />
+              </div>
+              <div class="form-group">
+                <label>Hasta (Fecha Final)</label>
+                <input type="date" id="report-end-date" onchange="renderMovements()" style="padding:8px 10px; font-size:13px;" />
+              </div>
+            </div>
+
+            <!-- TARJETA PRINCIPAL CON TOTAL COMBINABLE -->
+            <div class="papa-kpi-box papa-kpi-main" style="margin-bottom:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span class="papa-kpi-label" style="color:#bfdbfe; font-size:12px;">💰 TOTAL SELECCIONADO EN EL PERÍODO</span>
+                <span class="kpi-badge badge-blue" id="report-selected-tags">Contado + Crédito + Pedidos</span>
+              </div>
+              <strong class="papa-kpi-value" style="font-size:26px; margin:2px 0;" id="report-total-seleccionado">$0</strong>
+              <span class="papa-kpi-sub" id="report-total-count">0 operaciones incluidas · Cobrado en abonos: <b class="text-green" id="report-cobrado-periodo">$0</b></span>
+            </div>
+
+            <!-- 3 TARJETAS INDIVIDUALES CON CHECKBOX PARA ACTIVAR/DESACTIVAR CADA UNA -->
             <div class="papa-kpis-grid">
-              <div class="papa-kpi-box papa-kpi-main">
-                <span class="papa-kpi-label">Total Vendido ese día</span>
-                <strong class="papa-kpi-value" id="papa-total-vendido">$0</strong>
-                <span class="papa-kpi-sub" id="papa-ventas-count">0 ventas registradas</span>
-              </div>
-              <div class="papa-kpi-box">
-                <span class="papa-kpi-label">Contado / Fiado</span>
-                <strong class="papa-kpi-value" style="font-size:14.5px;" id="papa-contado-fiado">$0 / $0</strong>
-                <span class="papa-kpi-sub">Cobrado abonos: <b class="text-green" id="papa-cobrado-dia">$0</b></span>
-              </div>
-              <div class="papa-kpi-box">
-                <span class="papa-kpi-label">Pedidos anotados</span>
-                <strong class="papa-kpi-value text-amber" id="papa-pedidos-dia">$0</strong>
-                <span class="papa-kpi-sub" id="papa-pedidos-count">0 encargos ese día</span>
-              </div>
+              <label class="papa-kpi-box report-check-card" id="card-chk-contado">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                  <span class="papa-kpi-label">✅ Venta de Contado</span>
+                  <input type="checkbox" id="chk-sum-contado" checked onchange="renderMovements()" style="width:16px; height:16px; cursor:pointer;" />
+                </div>
+                <strong class="papa-kpi-value text-green" style="font-size:17px;" id="report-contado-monto">$0</strong>
+                <span class="papa-kpi-sub" id="report-contado-count">0 ventas</span>
+              </label>
+
+              <label class="papa-kpi-box report-check-card" id="card-chk-credito">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                  <span class="papa-kpi-label">📝 Venta a Crédito</span>
+                  <input type="checkbox" id="chk-sum-credito" checked onchange="renderMovements()" style="width:16px; height:16px; cursor:pointer;" />
+                </div>
+                <strong class="papa-kpi-value text-amber" style="font-size:17px;" id="report-credito-monto">$0</strong>
+                <span class="papa-kpi-sub" id="report-credito-count">0 ventas</span>
+              </label>
+
+              <label class="papa-kpi-box report-check-card" id="card-chk-pedido">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                  <span class="papa-kpi-label">📦 A Pedido</span>
+                  <input type="checkbox" id="chk-sum-pedido" checked onchange="renderMovements()" style="width:16px; height:16px; cursor:pointer;" />
+                </div>
+                <strong class="papa-kpi-value" style="font-size:17px; color:#ddd6fe;" id="report-pedido-monto">$0</strong>
+                <span class="papa-kpi-sub" id="report-pedido-count">0 pedidos</span>
+              </label>
             </div>
 
             <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
               <label class="toggle-label">
-                <input type="checkbox" id="filter-movs-by-papa-date" onchange="renderMovements()" />
-                Mostrar abajo solo las operaciones de esta fecha
+                <input type="checkbox" id="filter-movs-by-range" onchange="renderMovements()" />
+                Filtrar tabla inferior por este rango de fechas
               </label>
-              <span class="muted" style="font-size:11.5px;" id="papa-day-label"></span>
+              <span class="muted" style="font-size:11.5px;" id="report-range-label"></span>
             </div>
           </div>
 
@@ -474,11 +509,13 @@
 
             <div class="search-bar-inline" style="display:flex; gap:8px; flex-wrap:wrap;">
               <input type="text" id="movs-history-search" placeholder="🔍 Filtrar historial por cliente, producto o tipo..." oninput="renderMovements()" style="flex:1; min-width:200px;" />
-              <select id="movs-type-filter" onchange="renderMovements()" style="width:170px;">
+              <select id="movs-type-filter" onchange="renderMovements()" style="width:190px;">
                 <option value="TODOS">Todos los tipos</option>
-                <option value="VENTAS">Solo Ventas</option>
-                <option value="PEDIDO">Solo Pedidos</option>
-                <option value="ABONO / PAGO">Solo Cobros</option>
+                <option value="VENTAS">Todas las Ventas</option>
+                <option value="VENTA CONTADO">Solo Venta de Contado</option>
+                <option value="VENTA A CREDITO">Solo Venta a Crédito</option>
+                <option value="PEDIDO">Solo A Pedido</option>
+                <option value="ABONO / PAGO">Solo Cobros / Abonos</option>
               </select>
             </div>
 
@@ -757,8 +794,8 @@
           <div class="form-group">
             <label>Tipo de Operación *</label>
             <select id="edit-op-tipo" onchange="toggleEditOpOrderStatus()" required>
-              <option value="VENTA FIADA">📝 VENTA FIADA (Suma deuda)</option>
-              <option value="VENTA CONTADO">✅ VENTA CONTADO (No altera deuda)</option>
+              <option value="VENTA A CREDITO">📝 VENTA A CRÉDITO (Suma deuda)</option>
+              <option value="VENTA CONTADO">✅ VENTA DE CONTADO (No altera deuda)</option>
               <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
               <option value="PEDIDO">📦 PEDIDO / ENCARGO</option>
             </select>
@@ -801,7 +838,7 @@
             <select id="edit-op-medio">
               <option value="EFECTIVO">Efectivo</option>
               <option value="TRANSFERENCIA">Transferencia / MP</option>
-              <option value="CUENTA CORRIENTE">Cuenta Corriente (Fiado)</option>
+              <option value="CUENTA CORRIENTE">Cuenta Corriente (Venta a Crédito)</option>
               <option value="ENCARGO">Encargo / Pedido</option>
             </select>
           </div>
