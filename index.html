@@ -312,10 +312,10 @@
       <div class="two-col-form">
         <div class="glass-card panel-box">
           
-          <!-- CARGA RÁPIDA POR VOZ / AUDIO WHATSAPP / IA -->
+          <!-- CARGA RÁPIDA POR VOZ / AUDIO WHATSAPP / LISTADO SIN NOMBRE / IA -->
           <div class="voice-box" id="audio-dropzone">
             <div class="voice-head">
-              <span>⚡ Carga Rápida: Audio WhatsApp o Texto</span>
+              <span>⚡ Carga Rápida: Audio, Listado o Texto</span>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <label class="btn-audio-upload" title="Subir nota de voz de WhatsApp (.ogg, .opus, .mp3, .m4a)">
                   📎 Subir Audio
@@ -326,11 +326,11 @@
             </div>
             
             <div class="drop-hint" id="drop-hint-text">
-              💡 Arrastrá un audio de WhatsApp de Freddy acá (puede incluir ventas a crédito, contado, cobros, pedidos y tareas):
+              💡 Pegá el listado de papá (incluso sin nombres de clientes) o arrastrá un audio de WhatsApp:
             </div>
 
-            <textarea id="voice-input" rows="2" placeholder="Ej: Cobré 50 mil de Lucas, anotame pedido de 3 capas para Pocho, y agendame avisarle a Matías el jueves que pague"></textarea>
-            <button type="button" class="btn-primary btn-full" style="margin-top:10px;" onclick="parseSmartCommand()">✨ Interpretar con IA</button>
+            <textarea id="voice-input" rows="3" placeholder="Ej sin nombre (contado):&#10;- 3 capas $15000&#10;- 2 cuchillas Magic Clip $24000&#10;- 1 talco $4500&#10;O con nombres: Cobré 50 mil de Lucas..."></textarea>
+            <button type="button" class="btn-primary btn-full" style="margin-top:10px;" onclick="parseSmartCommand()">✨ Interpretar Listado / Audio</button>
 
             <!-- BANNER DE PEDIDO ÚNICO DETECTADO -->
             <div id="detected-order-banner" class="order-banner" style="display:none;">
@@ -348,7 +348,7 @@
           <hr class="divider" />
 
           <h2>Registrar Operación Individual</h2>
-          <p class="muted">Tanto ventas, cobros como pedidos quedan guardados en el historial y se pueden editar luego.</p>
+          <p class="muted">En <strong>Venta de Contado</strong> el cliente es opcional (ideal para ventas mostrador/varios).</p>
           
           <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
             <div class="form-row">
@@ -360,7 +360,7 @@
                 <label>Tipo de Operación</label>
                 <select id="mov-tipo" onchange="toggleProductPicker()" required>
                   <option value="VENTA A CREDITO">📝 VENTA A CRÉDITO (Suma deuda)</option>
-                  <option value="VENTA CONTADO">✅ VENTA DE CONTADO (No altera deuda)</option>
+                  <option value="VENTA CONTADO">✅ VENTA DE CONTADO (Cliente opcional)</option>
                   <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
                   <option value="PEDIDO">📦 PEDIDO / ENCARGO (Historial + Bandeja Pedidos)</option>
                 </select>
@@ -368,15 +368,18 @@
             </div>
 
             <div class="form-group">
-              <label>Cliente (Barbería — Barbero)</label>
-              <input type="text" id="mov-cliente-search" list="clientes-datalist" placeholder="Buscá barbería o barbero..." required />
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+                <label id="mov-cliente-label" style="margin-bottom:0;">Cliente (Barbería — Barbero)</label>
+                <button type="button" class="btn-sm btn-pay" style="padding:3px 9px; font-size:11px;" onclick="fillConsumidorFinal()">⚡ Mostrador / Varios</button>
+              </div>
+              <input type="text" id="mov-cliente-search" list="clientes-datalist" placeholder="Buscá barbería/barbero o dejá vacío si es contado..." required />
               <datalist id="clientes-datalist"></datalist>
             </div>
 
             <!-- SELECTOR DE PRODUCTOS -->
             <div id="product-picker-box" class="picker-box">
               <label style="font-size:12px; font-weight:600; color:#93c5fd; display:block; margin-bottom:8px;">
-                📦 Agregar Productos del Stock
+                📦 Agregar Productos del Stock (podés cargar varios juntos)
               </label>
               <div class="picker-row">
                 <input type="text" id="prod-pick-search" list="productos-datalist" placeholder="Escribí nombre o código..." />
@@ -414,7 +417,7 @@
 
             <div class="form-group">
               <label>Observaciones / Día de entrega (Opcional)</label>
-              <input type="text" id="mov-obs" placeholder="Ej: Llevar el viernes en ruta Flores" />
+              <input type="text" id="mov-obs" placeholder="Ej: Listado ventas sábado sin nombre" />
             </div>
 
             <button type="submit" class="btn-primary btn-full">Guardar Operación</button>
@@ -795,7 +798,7 @@
             <label>Tipo de Operación *</label>
             <select id="edit-op-tipo" onchange="toggleEditOpOrderStatus()" required>
               <option value="VENTA A CREDITO">📝 VENTA A CRÉDITO (Suma deuda)</option>
-              <option value="VENTA CONTADO">✅ VENTA DE CONTADO (No altera deuda)</option>
+              <option value="VENTA CONTADO">✅ VENTA DE CONTADO (Cliente opcional)</option>
               <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
               <option value="PEDIDO">📦 PEDIDO / ENCARGO</option>
             </select>
@@ -811,8 +814,8 @@
         </div>
 
         <div class="form-group">
-          <label>Cliente (Barbería | Barbero) *</label>
-          <input type="text" id="edit-op-cliente" list="clientes-datalist" required />
+          <label id="edit-op-cliente-label">Cliente (Barbería | Barbero)</label>
+          <input type="text" id="edit-op-cliente" list="clientes-datalist" placeholder="Dejar vacío para Consumidor Final" />
         </div>
 
         <!-- PRODUCTOS VINCULADOS A LA OPERACIÓN -->
