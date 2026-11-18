@@ -12,6 +12,9 @@ const DEFAULT_HABITS = [
 
 const STORAGE_KEY = 'rapibarbe_db_v3';
 const CONFIG_KEY = 'rapibarbe_config_v2';
+const CONSUMIDOR_FINAL_BARBERIA = 'CONSUMIDOR FINAL';
+const CONSUMIDOR_FINAL_BARBERO = 'MOSTRADOR / VARIOS';
+const CONSUMIDOR_FINAL_COMPOSITE = `${CONSUMIDOR_FINAL_BARBERIA} | ${CONSUMIDOR_FINAL_BARBERO}`;
 
 let db = { clients: [], movs: [], inv: [], orders: [], tasks: [], habits: [] };
 let config = { pin: '1234', cloudKey: '', cloudBin: '', geminiKey: '' };
@@ -27,6 +30,21 @@ let cachedGeminiModel = '';
 
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
 const todayISO = () => new Date().toISOString().split('T')[0];
+
+function isAnonymousClientName(raw) {
+  const clean = (raw || '').trim().toUpperCase();
+  if (!clean) return true;
+  return [
+    'SIN NOMBRE',
+    'CLIENTE SIN NOMBRE',
+    'CONSUMIDOR FINAL',
+    'VARIOS',
+    'MOSTRADOR',
+    'CONSUMIDOR FINAL | MOSTRADOR / VARIOS',
+    'VENTAS VARIAS',
+    'NO ESPECIFICA'
+  ].includes(clean);
+}
 
 /* Normaliza tipos antiguos ("VENTA FIADA") al nuevo estándar ("VENTA A CREDITO") */
 function normalizeOpType(tipo) {
@@ -65,6 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('task-fecha')) {
     document.getElementById('task-fecha').value = todayISO();
   }
+  toggleProductPicker();
   setupAudioDropzone();
 
   if (sessionStorage.getItem('rapibarbe_unlocked') === '1') {
@@ -616,9 +635,21 @@ function openEditOperationModal(id, isOrder) {
 }
 
 function toggleEditOpOrderStatus() {
-  const tipo = document.getElementById('edit-op-tipo').value;
+  const tipo = normalizeOpType(document.getElementById('edit-op-tipo').value);
   document.getElementById('edit-op-order-status-group').style.display = (tipo === 'PEDIDO') ? 'block' : 'none';
   document.getElementById('edit-op-picker-box').style.display = (tipo === 'ABONO / PAGO') ? 'none' : 'block';
+
+  const cliInput = document.getElementById('edit-op-cliente');
+  const cliLabel = document.getElementById('edit-op-cliente-label');
+  if (cliInput && cliLabel) {
+    if (tipo === 'VENTA CONTADO') {
+      cliInput.required = false;
+      cliLabel.textContent = 'Cliente (Opcional en Venta de Contado)';
+    } else {
+      cliInput.required = true;
+      cliLabel.textContent = 'Cliente (Barbería | Barbero) *';
+    }
+  }
 }
 
 function addEditOpCartItem() {
@@ -687,7 +718,10 @@ async function saveEditedOperation(e) {
   const newObs = document.getElementById('edit-op-obs').value.trim();
 
   let barberia = rawCli, barbero = '';
-  if (rawCli.includes('|')) {
+  if (!rawCli && newTipo === 'VENTA CONTADO') {
+    barberia = CONSUMIDOR_FINAL_BARBERIA;
+    barbero = CONSUMIDOR_FINAL_BARBERO;
+  } else if (rawCli.includes('|')) {
     const parts = rawCli.split('|');
     barberia = parts[0].trim();
     barbero = parts[1].trim();
@@ -788,7 +822,7 @@ function deleteFromEditOpModal() {
 
 /* --- AGENDA DE AVISOS WHATSAPP Y HABIT TRACKER --- */
 function findClientByComposite(rawCli) {
-  if (!rawCli) return null;
+  if (!rawCli || isAnonymousClientName(rawCli)) return null;
   const parts = rawCli.split('|');
   const b1 = (parts[0] || '').trim().toUpperCase();
   const b2 = (parts[1] || '').trim().toUpperCase();
@@ -1032,13 +1066,42 @@ function populateDatalists() {
 
 /* --- CARRITO DE PRODUCTOS Y DESCUENTO AUTOMÁTICO DE STOCK --- */
 function toggleProductPicker() {
-  const tipo = document.getElementById('mov-tipo').value;
+  const tipo = normalizeOpType(document.getElementById('mov-tipo').value);
   const isAbono = tipo === 'ABONO / PAGO';
+  const isContado = tipo === 'VENTA CONTADO';
+
   document.getElementById('product-picker-box').style.display = isAbono ? 'none' : 'block';
   const abonoParcialGroup = document.getElementById('abono-parcial-group');
   if (abonoParcialGroup) {
-    abonoParcialGroup.style.display = (normalizeOpType(tipo) === 'VENTA A CREDITO') ? 'block' : 'none';
+    abonoParcialGroup.style.display = (tipo === 'VENTA A CREDITO') ? 'block' : 'none';
   }
+
+  const cliInput = document.getElementById('mov-cliente-search');
+  const cliLabel = document.getElementById('mov-cliente-label');
+  if (cliInput && cliLabel) {
+    if (isContado) {
+      cliInput.required = false;
+      cliLabel.textContent = 'Cliente (Opcional — si lo dejás vacío se guarda como Mostrador/Varios)';
+      cliInput.placeholder = 'Opcional: dejá vacío o elegí un cliente...';
+    } else {
+      cliInput.required = true;
+      cliLabel.textContent = 'Cliente (Barbería — Barbero) *';
+      cliInput.placeholder = 'Buscá barbería o barbero...';
+    }
+  }
+}
+
+function fillConsumidorFinal() {
+  const tipoEl = document.getElementById('mov-tipo');
+  if (tipoEl && normalizeOpType(tipoEl.value) !== 'VENTA CONTADO') {
+    tipoEl.value = 'VENTA CONTADO';
+    toggleProductPicker();
+  }
+  const cliInput = document.getElementById('mov-cliente-search');
+  if (cliInput) {
+    cliInput.value = CONSUMIDOR_FINAL_COMPOSITE;
+  }
+  showToast('⚡ Listo: Venta de contado para Mostrador / Varios');
 }
 
 function addCartItem() {
@@ -1135,32 +1198,37 @@ function buildSmartExtractionPrompt(extraText = '') {
   const invList = db.inv.map(p => `${p.codigo}: ${p.producto} ($${p.venta})`).join('; ');
 
   return `Sos el asistente administrativo de Rapibarbe (insumos de barbería en Argentina). Fecha de hoy: ${todayISO()}.
-Analizá este audio o resumen estructurado de ventas a crédito, ventas de contado, cobros, pedidos y tareas de Freddy y convertilo en una lista plana de operaciones individuales:
+Analizá este audio o listado estructurado de ventas a crédito, ventas de contado, cobros, pedidos y tareas de Freddy y convertilo en una lista plana de operaciones individuales:
 ${extraText ? `"""\n${extraText}\n"""` : ''}
 
 Clientes existentes: [${cliList}]
 Productos en stock: [${invList}]
 
 REGLAS CRÍTICAS DE DESGLOSE:
-1. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva a crédito, separalo en DOS operaciones en el array:
+1. VENTAS SIN NOMBRE DE CLIENTE (LISTADOS AL CONTADO):
+   - Si en el audio o listado se mencionan artículos vendidos SIN decir a qué cliente/barbero se los vendió (ej: "se vendieron 3 capas a 15 mil, 2 cuchillas a 24 mil", o un listado suelto de artículos sin nombre), poné:
+     "tipo": "VENTA CONTADO"
+     "cliente": "${CONSUMIDOR_FINAL_COMPOSITE}"
+   - Si son varios artículos sueltos sin cliente en un mismo listado de ventas de contado, podés generar una operación por ítem o agruparlos, vinculando el código ART-XXX en "items" si coincide con el stock para que descuente inventario automáticamente.
+2. Si un cliente HACE UN ABONO de deuda anterior Y ADEMÁS lleva mercadería nueva a crédito, separalo en DOS operaciones en el array:
    - Operación A: tipo "ABONO / PAGO" por el monto abonado.
    - Operación B: tipo "VENTA A CREDITO" por la mercadería nueva llevada.
-2. Si un cliente deja SEÑA por un PEDIDO pendiente, generá:
+3. Si un cliente deja SEÑA por un PEDIDO pendiente, generá:
    - Operación A: tipo "PEDIDO", montoManual: total, sena: seña.
    - Operación B: tipo "ABONO / PAGO" por el monto de la seña SOLO si no figura ya aparte como cobro del día.
-3. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy" o "Mercadería entregada hoy".
-4. Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
-5. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
+4. Ignorá las líneas de resumen global como "TOTALES DEL DÍA", "Total cobrado hoy" o "Mercadería entregada hoy".
+5. Si pide agendar un aviso de pago, grabar polo barbero o recordatorio para una fecha, usá tipo "TAREA".
+6. Si el producto no coincide con un código ART-XXX del stock, dejá "items": [] y poné el total en "montoManual" y el detalle en "notas".
 
 Devolvé ÚNICAMENTE un objeto JSON válido con esta estructura exacta:
 {
   "transcripcion": "resumen breve",
   "operaciones": [
     {
-      "tipo": "VENTA A CREDITO",
+      "tipo": "VENTA CONTADO",
       "subtipoTarea": "AVISO PAGO",
       "fechaProgramada": "${todayISO()}",
-      "cliente": "BARBERIA | BARBERO",
+      "cliente": "${CONSUMIDOR_FINAL_COMPOSITE}",
       "zona": "",
       "items": [],
       "montoManual": 0,
@@ -1253,11 +1321,35 @@ async function callGeminiWithFallback(partsArray) {
   throw new Error(lastError);
 }
 
-/* ANALIZADOR LOCAL INSTANTÁNEO PARA RESÚMENES ESTRUCTURADOS CON GUIONES */
+/* BUSCA SI EL TEXTO DE UN ÍTEM COINCIDE CON UN ARTÍCULO DEL INVENTARIO PARA DESCONTAR STOCK */
+function matchInventoryItemsFromLine(descLine) {
+  const clean = (descLine || '').replace(/\$\s*[\d.,]+/g, '').trim();
+  const qtyMatch = clean.match(/^(\d+)\s*(?:x\s*)?(.+)$/i);
+  const qty = qtyMatch ? Math.max(1, Number(qtyMatch[1])) : 1;
+  const prodName = (qtyMatch ? qtyMatch[2] : clean).replace(/[-–=]/g, ' ').trim().toUpperCase();
+
+  if (prodName.length < 3) return [];
+  const words = prodName.split(/\s+/).filter(w => w.length >= 3);
+  if (!words.length) return [];
+
+  const found = db.inv.find(p => {
+    const invUpper = (p.producto || '').toUpperCase();
+    return invUpper.includes(prodName) || words.every(w => invUpper.includes(w));
+  });
+
+  if (!found) return [];
+  return [{
+    codigo: found.codigo,
+    producto: found.producto,
+    qty,
+    precio: Number(found.venta) || 0
+  }];
+}
+
+/* ANALIZADOR LOCAL INSTANTÁNEO PARA LISTADOS CON O SIN NOMBRE DE CLIENTE */
 function parseStructuredSummaryLocally(rawText) {
   const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const bulletLines = lines.filter(l => /^[-•*]\s+/.test(l));
-  if (bulletLines.length < 2) return [];
+  if (!lines.length) return [];
 
   const ops = [];
   let inOrdersSection = false;
@@ -1280,27 +1372,56 @@ function parseStructuredSummaryLocally(rawText) {
       continue;
     }
     if (upper.includes('TOTALES DEL DÍA') || upper.startsWith('TOTAL ')) continue;
-    if (!/^[-•*]\s+/.test(line) || !line.includes(':')) continue;
 
-    const cleanLine = line.replace(/^[-•*]\s*/, '');
+    const cleanLine = line.replace(/^[-•*]\s*/, '').trim();
+    if (!cleanLine) continue;
+
+    // CASO A: LÍNEA SIN NOMBRE DE CLIENTE (Ej: "- 3 capas $15000" o "2 cuchillas Magic Clip = $24.000")
+    if (!cleanLine.includes(':')) {
+      const priceMatch = cleanLine.match(/(?:=\s*)?\$\s*([\d.]+)/) || cleanLine.match(/\b(\d{4,})\s*$/);
+      const matchedItems = matchInventoryItemsFromLine(cleanLine);
+      let amount = priceMatch ? parseArs(priceMatch[1]) : 0;
+      if (!amount && matchedItems.length) {
+        amount = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
+      }
+
+      if (amount > 0 || matchedItems.length > 0) {
+        const cleanDetail = cleanLine.replace(/(?:=\s*)?\$\s*[\d.]+/g, '').trim() || cleanLine;
+        ops.push({
+          tipo: 'VENTA CONTADO',
+          cliente: CONSUMIDOR_FINAL_COMPOSITE,
+          zona: '',
+          items: matchedItems,
+          resolvedItems: matchedItems,
+          montoManual: amount,
+          medio: upper.includes('TRANSFER') ? 'TRANSFERENCIA' : 'EFECTIVO',
+          notas: cleanDetail
+        });
+      }
+      continue;
+    }
+
+    // CASO B: LÍNEA CON CLIENTE ("Cliente: detalle...")
     const colonIdx = cleanLine.indexOf(':');
     const rawWho = cleanLine.slice(0, colonIdx).trim();
     const rest = cleanLine.slice(colonIdx + 1).trim();
 
-    let clienteFmt = rawWho.toUpperCase();
+    let clienteFmt = isAnonymousClientName(rawWho) ? CONSUMIDOR_FINAL_COMPOSITE : rawWho.toUpperCase();
     let zonaFmt = '';
-    const parenMatch = rawWho.match(/^([^(]+)\(([^)]+)\)/);
-    if (parenMatch) {
-      const nombre = parenMatch[1].trim().toUpperCase();
-      const lugar = parenMatch[2].trim().toUpperCase();
-      clienteFmt = `${lugar} | ${nombre}`;
-      if (lugar.includes('CELINA')) zonaFmt = 'VILLA CELINA';
-    } else {
-      const matched = db.clients.find(c =>
-        (c.barbero || '').toUpperCase() === clienteFmt ||
-        (c.barberia || '').toUpperCase() === clienteFmt
-      );
-      if (matched) clienteFmt = `${matched.barberia} | ${matched.barbero}`;
+    if (!isAnonymousClientName(rawWho)) {
+      const parenMatch = rawWho.match(/^([^(]+)\(([^)]+)\)/);
+      if (parenMatch) {
+        const nombre = parenMatch[1].trim().toUpperCase();
+        const lugar = parenMatch[2].trim().toUpperCase();
+        clienteFmt = `${lugar} | ${nombre}`;
+        if (lugar.includes('CELINA')) zonaFmt = 'VILLA CELINA';
+      } else {
+        const matched = db.clients.find(c =>
+          (c.barbero || '').toUpperCase() === clienteFmt ||
+          (c.barberia || '').toUpperCase() === clienteFmt
+        );
+        if (matched) clienteFmt = `${matched.barberia} | ${matched.barbero}`;
+      }
     }
 
     const segments = rest.split('|').map(s => s.trim());
@@ -1409,7 +1530,8 @@ function parseStructuredSummaryLocally(rawText) {
 
     const eqM = mainDesc.match(/=\s*\$\s*([\d.]+)/) || mainDesc.match(/\$\s*([\d.]+)/);
     const saleVal = eqM ? parseArs(eqM[1]) : 0;
-    const isContado = /pagado completo|contado|efectivo/i.test(paySeg) && !/pendiente|debe:\s*\$\s*[1-9]/i.test(rest);
+    const isAnon = isAnonymousClientName(clienteFmt);
+    const isContado = isAnon || (/pagado completo|contado|efectivo/i.test(paySeg) && !/pendiente|debe:\s*\$\s*[1-9]/i.test(rest));
 
     ops.push({
       tipo: isContado ? 'VENTA CONTADO' : 'VENTA A CREDITO',
@@ -1488,10 +1610,16 @@ function renderBatchReview(ops) {
         }
       });
     }
+    const normTipo = normalizeOpType(op.tipo);
+    const rawCli = (op.cliente || '').trim();
+    const finalCli = isAnonymousClientName(rawCli)
+      ? CONSUMIDOR_FINAL_COMPOSITE
+      : rawCli;
+
     return {
       ...op,
-      tipo: normalizeOpType(op.tipo),
-      cliente: op.cliente || 'CLIENTE SIN NOMBRE',
+      tipo: normTipo,
+      cliente: finalCli,
       zona: op.zona || '',
       sena: Number(op.sena) || 0,
       fechaProgramada: op.fechaProgramada || todayISO(),
@@ -1530,7 +1658,7 @@ function renderBatchReview(ops) {
                 <button type="button" class="btn-icon btn-icon-del" onclick="removeBatchItem(${idx})" style="font-size:15px;" title="Quitar">🗑</button>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <input type="text" list="clientes-datalist" value="${escapeAttr(op.cliente)}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="BARBERIA | BARBERO" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
+                <input type="text" list="clientes-datalist" value="${escapeAttr(op.cliente)}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="Opcional en contado (Mostrador / Varios)" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
                 ${isTask
                   ? `<input type="date" value="${escapeAttr(op.fechaProgramada)}" onchange="pendingBatchOps[${idx}].fechaProgramada = this.value" style="width:130px; padding:6px 8px; font-size:12px;" />`
                   : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:110px; padding:6px 8px; text-align:right; font-weight:700;" />`
@@ -1563,7 +1691,7 @@ function closeBatchReview() {
 function ensureClientExists(barberiaStr, barberoStr, zonaStr = '') {
   const b1 = (barberiaStr || '').trim().toUpperCase();
   const b2 = (barberoStr || '').trim().toUpperCase();
-  if (!b1) return;
+  if (!b1 || isAnonymousClientName(b1) || isAnonymousClientName(`${b1} | ${b2}`)) return;
 
   const exists = db.clients.some(c =>
     ((c.barberia || '').toUpperCase() === b1 && (c.barbero || '').toUpperCase() === (b2 || b1)) ||
@@ -1599,9 +1727,13 @@ async function saveAllBatchOperations() {
 
   pendingBatchOps.forEach((op, index) => {
     const normOpTipo = normalizeOpType(op.tipo);
-    const rawCli = (op.cliente || 'CLIENTE SIN NOMBRE').trim();
+    const rawCli = (op.cliente || '').trim();
     let barberia = rawCli, barbero = '';
-    if (rawCli.includes('|')) {
+
+    if (isAnonymousClientName(rawCli)) {
+      barberia = CONSUMIDOR_FINAL_BARBERIA;
+      barbero = CONSUMIDOR_FINAL_BARBERO;
+    } else if (rawCli.includes('|')) {
       const parts = rawCli.split('|');
       barberia = parts[0].trim();
       barbero = parts[1].trim();
@@ -1614,7 +1746,7 @@ async function saveAllBatchOperations() {
         id: 'TSK-' + (Date.now() + index),
         fecha: op.fechaProgramada || fecha,
         tipo: op.subtipoTarea || 'AVISO PAGO',
-        cliente: rawCli.toUpperCase(),
+        cliente: isAnonymousClientName(rawCli) ? '' : rawCli.toUpperCase(),
         titulo: op.notas || 'Tarea programada por IA',
         done: false
       });
@@ -1677,7 +1809,7 @@ async function saveAllBatchOperations() {
   closeBatchReview();
   document.getElementById('voice-input').value = '';
   const dropHint = document.getElementById('drop-hint-text');
-  if (dropHint) dropHint.innerHTML = '📎 Arrastrá un <strong>audio de WhatsApp</strong> acá o <strong>tocá para subirlo</strong>';
+  if (dropHint) dropHint.innerHTML = '💡 Pegá el listado de papá (incluso sin nombres de clientes) o arrastrá un audio de WhatsApp:';
 
   await persistData();
   showToast(`✅ ¡${count} acciones guardadas al instante!`);
@@ -1694,7 +1826,13 @@ function applyParsedCommandToForm(parsed) {
   const normTipo = normalizeOpType(parsed.tipo);
   if (normTipo) document.getElementById('mov-tipo').value = normTipo;
   toggleProductPicker();
-  if (parsed.cliente) document.getElementById('mov-cliente-search').value = parsed.cliente;
+
+  if (parsed.cliente && !isAnonymousClientName(parsed.cliente)) {
+    document.getElementById('mov-cliente-search').value = parsed.cliente;
+  } else if (normTipo === 'VENTA CONTADO') {
+    document.getElementById('mov-cliente-search').value = '';
+  }
+
   if (parsed.medio) document.getElementById('mov-medio').value = parsed.medio;
   if (parsed.abonoParcial) document.getElementById('mov-abono-parcial').value = parsed.abonoParcial;
 
@@ -1706,6 +1844,7 @@ function applyParsedCommandToForm(parsed) {
     renderCart();
   } else if (parsed.montoManual) {
     document.getElementById('mov-monto').value = parsed.montoManual;
+    if (parsed.notas) document.getElementById('mov-detalle').value = parsed.notas;
   }
 
   const banner = document.getElementById('detected-order-banner');
@@ -1726,7 +1865,7 @@ function applyParsedCommandToForm(parsed) {
 
 async function saveDetectedOrder() {
   if (!lastDetectedOrder) return;
-  const rawCli = document.getElementById('mov-cliente-search').value.trim() || lastDetectedOrder.cliente || 'SIN CLIENTE';
+  const rawCli = document.getElementById('mov-cliente-search').value.trim() || lastDetectedOrder.cliente || CONSUMIDOR_FINAL_COMPOSITE;
   const matched = findClientByComposite(rawCli);
 
   db.orders.unshift({
@@ -1775,21 +1914,21 @@ function startDictation() {
 
 async function parseSmartCommand() {
   const text = document.getElementById('voice-input').value.trim();
-  if (!text) return showToast('Escribí, pegá un resumen o subí primero un audio');
+  if (!text) return showToast('Escribí, pegá un listado o subí primero un audio');
 
   const dropHint = document.getElementById('drop-hint-text');
 
   const instantLocalOps = parseStructuredSummaryLocally(text);
-  if (instantLocalOps.length >= 2) {
+  if (instantLocalOps.length >= 1 && (instantLocalOps.length >= 2 || text.includes('\n') || /^[-•*]/.test(text))) {
     document.getElementById('detected-order-banner').style.display = 'none';
     renderBatchReview(instantLocalOps);
-    if (dropHint) dropHint.innerHTML = `⚡ ${instantLocalOps.length} acciones desglosadas al instante:`;
+    if (dropHint) dropHint.innerHTML = `⚡ ${instantLocalOps.length} ${instantLocalOps.length === 1 ? 'operación desglosada' : 'operaciones desglosadas'} al instante:`;
     return;
   }
 
   if (config.geminiKey) {
     const aiBtn = document.querySelector('button[onclick="parseSmartCommand()"]');
-    const originalBtnText = aiBtn ? aiBtn.innerHTML : '✨ Interpretar con IA';
+    const originalBtnText = aiBtn ? aiBtn.innerHTML : '✨ Interpretar Listado / Audio';
     if (aiBtn) {
       aiBtn.disabled = true;
       aiBtn.innerHTML = '⏳ Analizando...';
@@ -1835,9 +1974,20 @@ async function saveMovement(e) {
   }
 
   try {
+    const tipo = normalizeOpType(document.getElementById('mov-tipo').value);
     const rawCli = document.getElementById('mov-cliente-search').value.trim();
+
+    if (!rawCli && tipo !== 'VENTA CONTADO') {
+      showToast('Seleccioná un cliente para este tipo de operación');
+      document.getElementById('mov-cliente-search').focus();
+      return;
+    }
+
     let barberia = rawCli, barbero = '';
-    if (rawCli.includes('|')) {
+    if (isAnonymousClientName(rawCli)) {
+      barberia = CONSUMIDOR_FINAL_BARBERIA;
+      barbero = CONSUMIDOR_FINAL_BARBERO;
+    } else if (rawCli.includes('|')) {
       const parts = rawCli.split('|');
       barberia = parts[0].trim();
       barbero = parts[1].trim();
@@ -1845,7 +1995,6 @@ async function saveMovement(e) {
 
     ensureClientExists(barberia, barbero);
 
-    const tipo = normalizeOpType(document.getElementById('mov-tipo').value);
     const monto = Number(document.getElementById('mov-monto').value) || 0;
     const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
     const fecha = document.getElementById('mov-fecha').value;
@@ -1890,7 +2039,7 @@ async function saveMovement(e) {
       barberia: barberia.toUpperCase(),
       barbero: barbero.toUpperCase(),
       tipo,
-      detalle: document.getElementById('mov-detalle').value.trim(),
+      detalle: document.getElementById('mov-detalle').value.trim() || getOpTypeLabel(tipo),
       medio,
       monto,
       items: [...currentCart],
@@ -1918,6 +2067,9 @@ async function saveMovement(e) {
     document.getElementById('mov-detalle').value = '';
     document.getElementById('mov-obs').value = '';
     document.getElementById('voice-input').value = '';
+    if (tipo === 'VENTA CONTADO' && isAnonymousClientName(rawCli)) {
+      document.getElementById('mov-cliente-search').value = '';
+    }
     await persistData();
     showToast('✅ Movimiento guardado al instante');
   } finally {
