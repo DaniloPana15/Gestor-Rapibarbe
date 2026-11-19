@@ -12,6 +12,7 @@ const DEFAULT_HABITS = [
 
 const STORAGE_KEY = 'rapibarbe_db_v3';
 const CONFIG_KEY = 'rapibarbe_config_v2';
+const LAST_SYNC_KEY = 'rapibarbe_last_sync_v1';
 const CONSUMIDOR_FINAL_BARBERIA = 'CONSUMIDOR FINAL';
 const CONSUMIDOR_FINAL_BARBERO = 'MOSTRADOR / VARIOS';
 const CONSUMIDOR_FINAL_COMPOSITE = `${CONSUMIDOR_FINAL_BARBERIA} | ${CONSUMIDOR_FINAL_BARBERO}`;
@@ -26,6 +27,10 @@ let editOpCart = [];
 let lastDetectedOrder = null;
 let pendingBatchOps = [];
 let isSyncingNow = false;
+let cloudAutoSaveTimer = null;
+let hasPendingCloudSave = false;
+let cloudConnectionState = 'disconnected';
+let lastSyncAt = '';
 let cachedGeminiModel = '';
 
 const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
@@ -85,13 +90,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   toggleProductPicker();
   setupAudioDropzone();
+  renderCloudStatusPanel();
 
   if (sessionStorage.getItem('rapibarbe_unlocked') === '1') {
     showApp();
   }
 
   setInterval(() => {
-    if (config.cloudKey && config.cloudBin && document.visibilityState === 'visible' && !isSyncingNow) {
+    if (config.cloudKey && config.cloudBin && document.visibilityState === 'visible' && !isSyncingNow && !hasPendingCloudSave) {
       syncFromCloud(true);
     }
   }, 30000);
@@ -109,11 +115,15 @@ function loadConfig() {
   if (saved) {
     try { config = { ...config, ...JSON.parse(saved) }; } catch (e) {}
   }
+  lastSyncAt = localStorage.getItem(LAST_SYNC_KEY) || '';
+  cloudConnectionState = (config.cloudKey && config.cloudBin) ? 'connected' : 'disconnected';
+
   document.getElementById('cloud-key').value = config.cloudKey || '';
   document.getElementById('cloud-bin').value = config.cloudBin || '';
   if (document.getElementById('gemini-key')) {
     document.getElementById('gemini-key').value = config.geminiKey || '';
   }
+  renderCloudStatusPanel();
 }
 
 function saveConfigLocal() {
@@ -146,43 +156,194 @@ function loadLocalData() {
   }
 }
 
-/* GUARDADO INSTANTÁNEO EN PANTALLA + SINCRONIZACIÓN EN SEGUNDO PLANO */
+function formatSyncTimestamp(isoStr) {
+  if (!isoStr) return 'Sin sincronizaciones aún';
+  const d = new Date(isoStr);
+  if (Number.isNaN(d.getTime())) return 'Sin sincronizaciones aún';
+  return d.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+function renderCloudStatusPanel() {
+  const panel = document.getElementById('cloud-status-panel');
+  const label = document.getElementById('cloud-conn-label');
+  const autosavePill = document.getElementById('cloud-autosave-pill');
+  const lastSyncEl = document.getElementById('cloud-last-sync-text');
+  if (!panel || !label || !autosavePill || !lastSyncEl) return;
+
+  const hasCreds = Boolean(config.cloudKey && config.cloudBin);
+  panel.classList.remove('is-connected', 'is-disconnected', 'is-syncing');
+
+  if (cloudConnectionState === 'syncing') {
+    panel.classList.add('is-syncing');
+    label.textContent = 'Sincronizando...';
+    autosavePill.textContent = hasCreds ? 'Auto-guardado: Activo (2s)' : 'Auto-guardado: Inactivo';
+  } else if (hasCreds && cloudConnectionState === 'connected') {
+    panel.classList.add('is-connected');
+    label.textContent = 'Conectado';
+    autosavePill.textContent = 'Auto-guardado: Activo (2s)';
+  } else {
+    panel.classList.add('is-disconnected');
+    label.textContent = 'Desconectado';
+    autosavePill.textContent = hasCreds ? 'Auto-guardado: En espera' : 'Auto-guardado: Inactivo';
+  }
+
+  lastSyncEl.textContent = `Última sincronización: ${formatSyncTimestamp(lastSyncAt)}`;
+}
+
+function markSyncSuccess(statusMsg = 'Sincronizado en la nube ✓') {
+  lastSyncAt = new Date().toISOString();
+  localStorage.setItem(LAST_SYNC_KEY, lastSyncAt);
+  cloudConnectionState = 'connected';
+  setSyncStatus(statusMsg, true);
+  renderCloudStatusPanel();
+}
+
+function toggleSecretVisibility(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const show = input.type === 'password';
+  input.type = show ? 'text' : 'password';
+  if (btn) {
+    btn.classList.toggle('is-visible', show);
+    btn.innerHTML = show
+      ? '<svg class="icon-eye" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/></svg>'
+      : '<svg class="icon-eye" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
+}
+
+function copyConfigField(inputId, label) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const value = input.value.trim();
+  if (!value) {
+    showToast(`El campo ${label} está vacío`);
+    return;
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(value)
+      .then(() => showToast(`📋 ${label} copiado al portapapeles`))
+      .catch(() => fallbackCopyText(value, label));
+  } else {
+    fallbackCopyText(value, label);
+  }
+}
+
+function fallbackCopyText(value, label) {
+  const ta = document.createElement('textarea');
+  ta.value = value;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand('copy');
+    showToast(`📋 ${label} copiado al portapapeles`);
+  } catch (e) {
+    showToast(`No se pudo copiar ${label}`);
+  }
+  document.body.removeChild(ta);
+}
+
+function scheduleCloudAutoSave() {
+  if (!config.cloudKey || !config.cloudBin) return;
+  hasPendingCloudSave = true;
+  if (cloudAutoSaveTimer) clearTimeout(cloudAutoSaveTimer);
+  setSyncStatus('Guardado local · Sincronizando en 2s...', false);
+  cloudAutoSaveTimer = setTimeout(() => {
+    cloudAutoSaveTimer = null;
+    pushToCloud(true);
+  }, 2000);
+}
+
+async function pushToCloud(isAuto = true) {
+  if (!config.cloudKey || !config.cloudBin) {
+    cloudConnectionState = 'disconnected';
+    renderCloudStatusPanel();
+    return false;
+  }
+  if (isSyncingNow) {
+    if (isAuto) scheduleCloudAutoSave();
+    return false;
+  }
+
+  hasPendingCloudSave = false;
+  isSyncingNow = true;
+  cloudConnectionState = 'syncing';
+  renderCloudStatusPanel();
+  setSyncStatus('Subiendo a la nube...', false);
+
+  try {
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Master-Key': config.cloudKey },
+      body: JSON.stringify(db)
+    });
+    if (res.ok) {
+      markSyncSuccess('Sincronizado en la nube ✓');
+      return true;
+    } else {
+      cloudConnectionState = 'disconnected';
+      setSyncStatus('Error al subir (guardado local OK)', false);
+      renderCloudStatusPanel();
+      return false;
+    }
+  } catch (err) {
+    cloudConnectionState = 'disconnected';
+    setSyncStatus('Sin internet (guardado local)', false);
+    renderCloudStatusPanel();
+    return false;
+  } finally {
+    isSyncingNow = false;
+  }
+}
+
+/* GUARDADO INSTANTÁNEO EN PANTALLA + GUARDADO AUTOMÁTICO EN NUBE (2 SEGUNDOS) */
 async function persistData() {
   ensureDbArrays();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   renderAll();
 
   if (config.cloudKey && config.cloudBin) {
-    isSyncingNow = true;
-    setSyncStatus('Subiendo a la nube...', false);
-    try {
-      const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-Master-Key': config.cloudKey },
-        body: JSON.stringify(db)
-      });
-      setSyncStatus(res.ok ? 'Sincronizado en la nube ✓' : 'Error al subir (guardado local OK)', res.ok);
-    } catch (err) {
-      setSyncStatus('Sin internet (guardado local)', false);
-    } finally {
-      isSyncingNow = false;
-    }
+    scheduleCloudAutoSave();
   } else {
+    cloudConnectionState = 'disconnected';
     setSyncStatus('Guardado en este dispositivo', false);
+    renderCloudStatusPanel();
   }
 }
 
 async function syncFromCloud(silent = false) {
   if (!config.cloudKey || !config.cloudBin) {
+    cloudConnectionState = 'disconnected';
+    renderCloudStatusPanel();
     if (!silent) {
-      showToast('Configurá tu API Key en "Nube & IA" para sincronizar.');
+      showToast('Configurá X-Master-Key y Bin ID para descargar desde la nube.');
       switchTab('nube');
     }
     return;
   }
+  if (silent && hasPendingCloudSave) return;
   if (isSyncingNow) return;
+
+  if (!silent && cloudAutoSaveTimer) {
+    clearTimeout(cloudAutoSaveTimer);
+    cloudAutoSaveTimer = null;
+    hasPendingCloudSave = false;
+  }
+
   isSyncingNow = true;
+  cloudConnectionState = 'syncing';
+  renderCloudStatusPanel();
   if (!silent) setSyncStatus('Descargando de la nube...', false);
+
   try {
     const res = await fetch(`https://api.jsonbin.io/v3/b/${config.cloudBin}/latest`, {
       headers: { 'X-Master-Key': config.cloudKey }
@@ -194,11 +355,18 @@ async function syncFromCloud(silent = false) {
       ensureDbArrays();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
       renderAll();
-      setSyncStatus('Nube actualizada ✓', true);
-      if (!silent) showToast('Datos actualizados desde la nube');
+      markSyncSuccess('Nube actualizada ✓');
+      if (!silent) showToast('☁️ Datos descargados desde la nube');
+    } else {
+      throw new Error('Formato inválido');
     }
   } catch (e) {
-    if (!silent) setSyncStatus('No se pudo conectar a la nube', false);
+    cloudConnectionState = 'disconnected';
+    renderCloudStatusPanel();
+    if (!silent) {
+      setSyncStatus('No se pudo conectar a la nube', false);
+      showToast('❌ Error al descargar desde la nube. Revisá tus claves.');
+    }
   } finally {
     isSyncingNow = false;
   }
@@ -207,7 +375,17 @@ async function syncFromCloud(silent = false) {
 async function createCloudBin() {
   const key = document.getElementById('cloud-key').value.trim();
   if (!key) return showToast('Pegá primero tu X-Master-Key de JSONBin.io');
+
+  const existingBin = document.getElementById('cloud-bin').value.trim() || config.cloudBin;
+  const confirmMsg = existingBin
+    ? '⚠️ ATENCIÓN: Ya tenés un Bin ID cargado.\n\nSi creás una nueva nube, se generará un Bin ID distinto con tus datos actuales y se reemplazará el Bin ID en este dispositivo.\n\n¿Estás seguro de que querés crear una nueva nube?'
+    : '⚠️ ¿Confirmás crear una nueva nube privada en JSONBin.io con tus datos actuales?';
+
+  if (!confirm(confirmMsg)) return;
+
   config.cloudKey = key;
+  cloudConnectionState = 'syncing';
+  renderCloudStatusPanel();
   showToast('Creando base de datos privada en la nube...');
   try {
     const res = await fetch('https://api.jsonbin.io/v3/b', {
@@ -225,23 +403,48 @@ async function createCloudBin() {
       config.cloudBin = data.metadata.id;
       document.getElementById('cloud-bin').value = config.cloudBin;
       saveConfigLocal();
-      setSyncStatus('Nube privada conectada ✓', true);
-      showToast('¡Nube creada! Tocá "Copiar Link de Acceso" para compartirlo.');
+      markSyncSuccess('Nube privada conectada ✓');
+      showToast('¡Nueva nube creada y conectada!');
+    } else {
+      cloudConnectionState = 'disconnected';
+      renderCloudStatusPanel();
+      showToast('No se pudo crear la nube. Verificá tu X-Master-Key.');
     }
   } catch (e) {
+    cloudConnectionState = 'disconnected';
+    renderCloudStatusPanel();
     showToast('Error de conexión con JSONBin.io');
   }
 }
 
-function saveCloudConfig(e) {
+async function saveCloudConfig(e) {
   e.preventDefault();
   config.cloudKey = document.getElementById('cloud-key').value.trim();
   config.cloudBin = document.getElementById('cloud-bin').value.trim();
   config.geminiKey = document.getElementById('gemini-key').value.trim();
   cachedGeminiModel = '';
   saveConfigLocal();
-  showToast('Configuración guardada');
-  if (config.cloudKey && config.cloudBin) syncFromCloud();
+
+  if (cloudAutoSaveTimer) {
+    clearTimeout(cloudAutoSaveTimer);
+    cloudAutoSaveTimer = null;
+    hasPendingCloudSave = false;
+  }
+
+  if (config.cloudKey && config.cloudBin) {
+    const isLocalEmpty = !db.clients.length && !db.movs.length && !db.inv.length && !(db.orders || []).length && !(db.tasks || []).length;
+    if (isLocalEmpty) {
+      await syncFromCloud(false);
+    } else {
+      const ok = await pushToCloud(false);
+      showToast(ok ? '✅ Configuración guardada y nube sincronizada' : '⚠️ Config guardada, pero falló la conexión con la nube');
+    }
+  } else {
+    cloudConnectionState = 'disconnected';
+    setSyncStatus('Guardado en este dispositivo', false);
+    renderCloudStatusPanel();
+    showToast('Configuración guardada (faltan credenciales de nube)');
+  }
 }
 
 function copyMagicAccessLink() {
@@ -2584,11 +2787,15 @@ function deleteProduct(codigo) {
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
 function exportBackup() {
+  ensureDbArrays();
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = url;
   a.download = `Rapibarbe_Respaldo_${todayISO()}.json`;
   a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  showToast('⬇ Respaldo (.json) exportado');
 }
 
 function importBackup(e) {
@@ -2598,13 +2805,19 @@ function importBackup(e) {
   reader.onload = (ev) => {
     try {
       const parsed = JSON.parse(ev.target.result);
-      if (parsed.clients && parsed.inv) {
+      if (parsed && Array.isArray(parsed.clients) && Array.isArray(parsed.inv)) {
         db = parsed;
         ensureDbArrays();
         persistData();
-        showToast('Respaldo restaurado');
+        showToast('✅ Respaldo (.json) restaurado correctamente');
+      } else {
+        showToast('El archivo JSON no tiene el formato de Rapibarbe');
       }
-    } catch (err) { showToast('Archivo inválido'); }
+    } catch (err) {
+      showToast('Archivo .json inválido');
+    } finally {
+      e.target.value = '';
+    }
   };
   reader.readAsText(file);
 }

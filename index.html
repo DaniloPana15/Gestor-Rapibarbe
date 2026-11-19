@@ -699,34 +699,79 @@
       <div class="two-col-form">
         <div class="glass-card panel-box">
           <h2>☁️ Sincronización Nube & IA</h2>
-          <p class="muted">Conectá JSONBin para compartir datos en tiempo real con Freddy y Gemini API para transcribir audios de WhatsApp.</p>
+          <p class="muted">Conectá JSONBin para sincronizar tus datos automáticamente en la nube y Gemini API para transcribir audios de WhatsApp.</p>
+
+          <!-- INDICADOR DE ESTADO DE CONEXIÓN Y ÚLTIMA SINCRONIZACIÓN -->
+          <div id="cloud-status-panel" class="cloud-status-card is-disconnected">
+            <div class="cloud-status-top">
+              <div class="cloud-status-badge-wrap">
+                <span class="cloud-status-dot" id="cloud-conn-dot"></span>
+                <span class="cloud-status-title" id="cloud-conn-label">Desconectado</span>
+              </div>
+              <span class="cloud-autosave-pill" id="cloud-autosave-pill">Auto-guardado: Inactivo</span>
+            </div>
+            <div class="cloud-last-sync" id="cloud-last-sync-text">Última sincronización: Sin sincronizaciones aún</div>
+          </div>
           
           <form onsubmit="saveCloudConfig(event)" class="styled-form">
             <div class="form-group">
-              <label>X-Master-Key (JSONBin.io)</label>
-              <input type="password" id="cloud-key" placeholder="$2a$10$..." />
+              <label for="cloud-key">X-Master-Key (JSONBin.io)</label>
+              <div class="secret-input-row">
+                <input type="password" id="cloud-key" placeholder="$2a$10$..." autocomplete="off" />
+                <button type="button" class="input-action-btn" onclick="toggleSecretVisibility('cloud-key', this)" title="Mostrar u ocultar X-Master-Key" aria-label="Mostrar u ocultar X-Master-Key">
+                  <svg class="icon-eye" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button type="button" class="input-action-btn input-copy-btn" onclick="copyConfigField('cloud-key', 'X-Master-Key')" title="Copiar X-Master-Key">Copiar</button>
+              </div>
             </div>
+
             <div class="form-group">
-              <label>Bin ID</label>
-              <input type="text" id="cloud-bin" placeholder="Ej: 6736a9b1ad19ca34f8c..." />
+              <label for="cloud-bin">Bin ID</label>
+              <div class="secret-input-row">
+                <input type="password" id="cloud-bin" placeholder="Ej: 6736a9b1ad19ca34f8c..." autocomplete="off" />
+                <button type="button" class="input-action-btn" onclick="toggleSecretVisibility('cloud-bin', this)" title="Mostrar u ocultar Bin ID" aria-label="Mostrar u ocultar Bin ID">
+                  <svg class="icon-eye" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button type="button" class="input-action-btn input-copy-btn" onclick="copyConfigField('cloud-bin', 'Bin ID')" title="Copiar Bin ID">Copiar</button>
+              </div>
             </div>
+
             <div class="form-group">
-              <label>Gemini API Key (Necesaria para leer audios de WhatsApp)</label>
-              <input type="password" id="gemini-key" placeholder="AIzaSy..." />
+              <label for="gemini-key">Gemini API Key (Necesaria para leer audios de WhatsApp)</label>
+              <div class="secret-input-row">
+                <input type="password" id="gemini-key" placeholder="AIzaSy..." autocomplete="off" />
+                <button type="button" class="input-action-btn" onclick="toggleSecretVisibility('gemini-key', this)" title="Mostrar u ocultar Gemini API Key" aria-label="Mostrar u ocultar Gemini API Key">
+                  <svg class="icon-eye" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+                <button type="button" class="input-action-btn input-copy-btn" onclick="copyConfigField('gemini-key', 'Gemini API Key')" title="Copiar Gemini API Key">Copiar</button>
+              </div>
             </div>
+
+            <!-- ÚNICOS BOTONES PRINCIPALES VISIBLES -->
             <div class="form-row">
-              <button type="button" class="btn-primary" onclick="createCloudBin()">✨ Crear Nube</button>
-              <button type="submit" class="btn-ghost">Guardar Config</button>
+              <button type="submit" class="btn-primary">💾 Guardar y Sincronizar</button>
+              <button type="button" class="btn-ghost" onclick="syncFromCloud(false)">☁️ Descargar desde la Nube</button>
             </div>
-            <button type="button" class="btn-ghost btn-full" style="margin-top:8px; border-color: rgba(16, 185, 129, 0.45); color: #6ee7b7;" onclick="copyMagicAccessLink()">
-              📲 Copiar Link de Acceso para Celular
-            </button>
+
+            <!-- DESPLEGABLE DE OPCIONES AVANZADAS -->
+            <details class="advanced-options-box">
+              <summary class="advanced-options-summary">⚙️ Opciones avanzadas</summary>
+              <div class="advanced-options-body">
+                <p class="muted" style="font-size:12px; line-height:1.45;">
+                  Creá un nuevo repositorio privado en JSONBin solo si configurás la nube por primera vez. Se te pedirá confirmación antes de reemplazar el Bin ID actual.
+                </p>
+                <button type="button" class="btn-danger-outline btn-full" onclick="createCloudBin()">✨ Crear nueva nube</button>
+                <button type="button" class="btn-ghost btn-full" style="border-color: rgba(16, 185, 129, 0.45); color: #6ee7b7;" onclick="copyMagicAccessLink()">
+                  📲 Copiar Link de Acceso para Celular
+                </button>
+              </div>
+            </details>
           </form>
         </div>
 
         <div class="glass-card panel-box">
           <h2>🔒 Seguridad y Respaldo</h2>
-          <p class="muted">Cambiá el PIN de acceso o descargá una copia de seguridad en JSON.</p>
+          <p class="muted">Cambiá el PIN de acceso o guardá una copia de seguridad local en formato JSON.</p>
           
           <form onsubmit="updatePin(event)" class="styled-form">
             <div class="form-group">
@@ -738,12 +783,13 @@
 
           <hr class="divider" />
 
-          <h3>Copias de Seguridad</h3>
+          <h3>Copias de Seguridad Locales</h3>
+          <p class="muted" style="margin-top:4px; font-size:12.5px;">Descargá o restaurá todos tus clientes, pedidos, stock y movimientos desde tu dispositivo.</p>
           <div class="form-row" style="margin-top:12px;">
-            <button type="button" class="btn-ghost" onclick="exportBackup()">⬇ Exportar JSON</button>
+            <button type="button" class="btn-ghost" onclick="exportBackup()">⬇ Exportar respaldo (.json)</button>
             <label class="btn-ghost file-btn">
-              ⬆ Importar JSON
-              <input type="file" accept=".json" onchange="importBackup(event)" hidden />
+              ⬆ Importar respaldo (.json)
+              <input type="file" accept=".json,application/json" onchange="importBackup(event)" hidden />
             </label>
           </div>
           <div style="margin-top:16px;">
