@@ -1,15 +1,5 @@
 const INITIAL_DATA = { clients: [], movs: [], inv: [] };
 
-const DEFAULT_HABITS = [
-  { id: 'HAB-1', day: 'LUN', text: 'Ruta Celina: revisar saldos y avisar visita por WhatsApp', done: false },
-  { id: 'HAB-2', day: 'LUN', text: 'Tarde: avisar por WhatsApp a barberos de ruta Martes (Liniers)', done: false },
-  { id: 'HAB-3', day: 'MAR', text: 'Ruta Liniers: cobrar pendientes y anotar pedidos del día', done: false },
-  { id: 'HAB-4', day: 'MIE', text: 'Preparar mercadería y avisar por WhatsApp a ruta Jueves (Virreyes)', done: false },
-  { id: 'HAB-5', day: 'JUE', text: 'Ruta Virreyes + avisar a barberos de Viernes (Flores / Pompeya)', done: false },
-  { id: 'HAB-6', day: 'VIE', text: 'Ruta Flores/Pompeya + grabar contenido / polo barbero con clientes', done: false },
-  { id: 'HAB-7', day: 'SAB', text: 'Cierre semanal: revisar deudores activos y reposición de stock', done: false }
-];
-
 const STORAGE_KEY = 'rapibarbe_db_v3';
 const CONFIG_KEY = 'rapibarbe_config_v2';
 const LAST_SYNC_KEY = 'rapibarbe_last_sync_v1';
@@ -17,15 +7,18 @@ const CONSUMIDOR_FINAL_BARBERIA = 'CONSUMIDOR FINAL';
 const CONSUMIDOR_FINAL_BARBERO = 'MOSTRADOR / VARIOS';
 const CONSUMIDOR_FINAL_COMPOSITE = `${CONSUMIDOR_FINAL_BARBERIA} | ${CONSUMIDOR_FINAL_BARBERO}`;
 
-let db = { clients: [], movs: [], inv: [], orders: [], tasks: [], habits: [] };
+let db = { clients: [], movs: [], inv: [], orders: [], tasks: [] };
 let config = { pin: '1234', cloudKey: '', cloudBin: '', geminiKey: '' };
 let activeRouteFilter = 'TODOS';
 let activeOrderFilter = 'PENDIENTE';
 let activeTaskFilter = 'PENDIENTES';
+let activeReportZone = 'TODAS';
 let currentCart = [];
 let editOpCart = [];
 let lastDetectedOrder = null;
 let pendingBatchOps = [];
+let newTaskImages = [];
+let editTaskImages = [];
 let isSyncingNow = false;
 let cloudAutoSaveTimer = null;
 let hasPendingCloudSave = false;
@@ -136,9 +129,6 @@ function ensureDbArrays() {
   if (!Array.isArray(db.inv)) db.inv = [];
   if (!Array.isArray(db.orders)) db.orders = [];
   if (!Array.isArray(db.tasks)) db.tasks = [];
-  if (!Array.isArray(db.habits) || !db.habits.length) {
-    db.habits = JSON.parse(JSON.stringify(DEFAULT_HABITS));
-  }
 }
 
 function loadLocalData() {
@@ -148,10 +138,10 @@ function loadLocalData() {
       db = JSON.parse(saved);
       ensureDbArrays();
     } catch (e) {
-      db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [], habits: JSON.parse(JSON.stringify(DEFAULT_HABITS)) };
+      db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [] };
     }
   } else {
-    db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [], habits: JSON.parse(JSON.stringify(DEFAULT_HABITS)) };
+    db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [] };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
   }
 }
@@ -580,6 +570,36 @@ function renderAll() {
   populateDatalists();
 }
 
+function updateRedBadge(id, count) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (count > 0) {
+    el.textContent = count > 99 ? '99+' : String(count);
+    el.style.display = 'inline-flex';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+function getOverdueCollectionsCount() {
+  const d = new Date();
+  d.setDate(d.getDate() - 7);
+  const sevenDaysAgo = d.toISOString().split('T')[0];
+
+  return (db.clients || []).filter(c => {
+    const saldo = getClientBalance(c);
+    if (saldo <= 0) return false;
+    const b1 = (c.barberia || '').trim().toUpperCase();
+    const b2 = (c.barbero || '').trim().toUpperCase();
+    const clientMovs = (db.movs || []).filter(m =>
+      (m.barberia || '').trim().toUpperCase() === b1 && (m.barbero || '').trim().toUpperCase() === b2
+    );
+    if (!clientMovs.length) return true;
+    const latestDate = clientMovs.reduce((max, m) => (m.fecha > max ? m.fecha : max), '');
+    return latestDate < sevenDaysAgo;
+  }).length;
+}
+
 function renderKPIs() {
   let totalDeuda = 0, deudoresCount = 0, totalCobrado = 0, ventasContado = 0, ventasCredito = 0;
 
@@ -596,20 +616,27 @@ function renderKPIs() {
     if (normTipo === 'VENTA A CREDITO') ventasCredito += monto;
   });
 
-  const pendingOrdersCount = (db.orders || []).filter(o => o.estado === 'PENDIENTE').length;
-  const today = todayISO();
-  const pendingTasksToday = (db.tasks || []).filter(t => !t.done && t.fecha <= today).length;
+  const pendingOrdersCount = (db.orders || []).filter(o => (o.estado || 'PENDIENTE') !== 'ENTREGADO').length;
+  const pendingTasksCount = (db.tasks || []).filter(t => !t.done).length;
+  const overdueCollectionsCount = getOverdueCollectionsCount();
 
   document.getElementById('kpi-deuda').textContent = fmtMoney(totalDeuda);
-  document.getElementById('kpi-deudores-count').textContent = `${deudoresCount} barberos con saldo activo`;
+  document.getElementById('kpi-deudores-count').textContent = `${deudoresCount} ${deudoresCount === 1 ? 'activo' : 'activos'}`;
   document.getElementById('kpi-cobrado').textContent = fmtMoney(totalCobrado);
   document.getElementById('kpi-ventas').textContent = fmtMoney(ventasContado + ventasCredito);
   document.getElementById('kpi-ventas-split').textContent = `Contado: ${fmtMoney(ventasContado)} · Crédito: ${fmtMoney(ventasCredito)}`;
   document.getElementById('kpi-stock-bajo').textContent = db.inv.filter(i => Number(i.stock) <= 3).length;
-  document.getElementById('kpi-pedidos-pendientes').textContent = pendingOrdersCount;
-  document.getElementById('nav-orders-count').textContent = pendingOrdersCount;
-  document.getElementById('kpi-tareas-hoy').textContent = pendingTasksToday;
-  document.getElementById('nav-tasks-count').textContent = pendingTasksToday;
+
+  updateRedBadge('badge-dashboard', overdueCollectionsCount);
+  updateRedBadge('dock-badge-dashboard', overdueCollectionsCount);
+
+  updateRedBadge('badge-agenda', pendingTasksCount);
+  updateRedBadge('dock-badge-agenda', pendingTasksCount);
+  updateRedBadge('qa-badge-agenda', pendingTasksCount);
+
+  updateRedBadge('badge-pedidos', pendingOrdersCount);
+  updateRedBadge('dock-badge-pedidos', pendingOrdersCount);
+  updateRedBadge('qa-badge-pedidos', pendingOrdersCount);
 }
 
 function setRouteFilter(route, btn) {
@@ -661,8 +688,8 @@ function renderDashboard() {
 
     return `
       <tr>
-        <td><div class="font-bold">${c.barberia}</div><div class="muted">${c.barbero}</div></td>
-        <td><div>${c.zona || '-'}</div><div class="muted" style="font-size:11px;">${c.ruta || 'A DEFINIR'}</div></td>
+        <td><div class="font-bold">${escapeAttr(c.barberia)}</div><div class="muted">${escapeAttr(c.barbero)}</div></td>
+        <td><div>${escapeAttr(c.zona || '-')}</div><div class="muted" style="font-size:11px;">${escapeAttr(c.ruta || 'A DEFINIR')}</div></td>
         <td class="text-right font-bold text-amber">${fmtMoney(c.saldoActual)}</td>
         <td class="text-right" style="white-space:nowrap;">
           ${waBtn}
@@ -673,25 +700,29 @@ function renderDashboard() {
   }).join('') : `<tr><td colspan="4" class="text-center muted" style="padding:24px;">No hay deudas pendientes en este filtro.</td></tr>`;
 
   const today = todayISO();
-  const todayTasks = (db.tasks || []).filter(t => !t.done && t.fecha <= today).slice(0, 4);
+  const pendingTasks = (db.tasks || [])
+    .filter(t => !t.done)
+    .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''))
+    .slice(0, 4);
   const dashTasksEl = document.getElementById('dash-today-tasks');
   if (dashTasksEl) {
-    dashTasksEl.innerHTML = todayTasks.length ? todayTasks.map(t => {
+    dashTasksEl.innerHTML = pendingTasks.length ? pendingTasks.map(t => {
       const cliObj = findClientByComposite(t.cliente);
       const waUrl = buildWhatsAppLinkForClient(cliObj, t.tipo);
+      const thumbBadge = (t.images && t.images.length) ? ` · 📷 ${t.images.length}` : '';
       return `
         <div class="activity-item">
           <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
-            <button class="task-check-btn" onclick="toggleTaskDone('${t.id}')" title="Completar">✓</button>
+            <button class="task-check-btn" onclick="toggleTaskDone('${t.id}')" title="Completar">✔</button>
             <div style="min-width:0;">
-              <div class="font-bold" style="font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.titulo}</div>
-              <div class="muted" style="font-size:11px;">${t.fecha < today ? '⚠️ Atrasada · ' : '📅 Hoy · '}${t.cliente || t.tipo}</div>
+              <div class="font-bold" style="font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeAttr(t.titulo)}</div>
+              <div class="muted" style="font-size:11px;">${t.fecha < today ? '⚠️ ' : ''}${t.fecha}${t.cliente ? ' · ' + escapeAttr(t.cliente) : ''}${thumbBadge}</div>
             </div>
           </div>
           ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa" style="flex-shrink:0;">WA</a>` : ''}
         </div>
       `;
-    }).join('') : '<p class="muted">No hay avisos ni tareas pendientes para hoy.</p>';
+    }).join('') : '<p class="muted">Sin tareas pendientes.</p>';
   }
 
   const routeTotals = {};
@@ -707,7 +738,7 @@ function renderDashboard() {
     .sort((a, b) => b[1] - a[1])
     .map(([ruta, total]) => `
       <div class="bar-row">
-        <div class="bar-labels"><span>${ruta}</span><span class="font-bold">${fmtMoney(total)}</span></div>
+        <div class="bar-labels"><span>${escapeAttr(ruta)}</span><span class="font-bold">${fmtMoney(total)}</span></div>
         <div class="bar-track"><div class="bar-fill" style="width:${Math.round((total / maxRoute) * 100)}%"></div></div>
       </div>
     `).join('') || '<p class="muted">Sin deudas activas</p>';
@@ -722,8 +753,8 @@ function renderDashboard() {
     return `
       <div class="activity-item">
         <div style="min-width:0; flex:1;">
-          <div class="font-bold" style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.barberia}${item.barbero ? ' — ' + item.barbero : ''}</div>
-          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.fecha} · ${item.detalle || getOpTypeLabel(item.tipo)}</div>
+          <div class="font-bold" style="font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeAttr(item.barberia)}${item.barbero ? ' — ' + escapeAttr(item.barbero) : ''}</div>
+          <div class="muted" style="font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${item.fecha} · ${escapeAttr(item.detalle || getOpTypeLabel(item.tipo))}</div>
         </div>
         <div class="font-bold ${valColor}" style="flex-shrink:0;">${prefix}${fmtMoney(item.monto)}</div>
       </div>
@@ -736,6 +767,7 @@ function getUnifiedOperationsList() {
   const movEntries = (db.movs || []).map((m, idx) => ({
     ...m,
     tipo: normalizeOpType(m.tipo),
+    zona: resolveOperationZona(m),
     isOrder: false,
     sortIndex: idx
   }));
@@ -751,18 +783,21 @@ function getUnifiedOperationsList() {
     const senaNum = Number(o.sena) || 0;
     const totalNum = Number(o.totalEstimado) || 0;
     const senaTag = senaNum > 0 ? ` · Seña: ${fmtMoney(senaNum)} (Resta: ${fmtMoney(Math.max(0, totalNum - senaNum))})` : '';
+    const est = o.estado || 'PENDIENTE';
+    const estadoTag = est === 'ENTREGADO' ? 'PEDIDO (ENTREGADO)' : (est === 'PREPARADO' ? 'PEDIDO (PREPARADO)' : 'PEDIDO');
 
     return {
       id: o.id,
       fecha: o.fecha || todayISO(),
       barberia,
       barbero,
-      tipo: o.estado === 'ENTREGADO' ? 'PEDIDO (ENTREGADO)' : 'PEDIDO',
+      zona: resolveOperationZona({ ...o, barberia, barbero }),
+      tipo: estadoTag,
       detalle: desc + senaTag + (o.notas ? ` (${o.notas})` : ''),
       medio: 'ENCARGO',
       monto: totalNum,
       isOrder: true,
-      orderEstado: o.estado,
+      orderEstado: est,
       sortIndex: 100000 + idx
     };
   });
@@ -945,28 +980,53 @@ async function saveEditedOperation(e) {
   if (newTipo === 'PEDIDO') {
     if (!wasOrder) {
       db.movs = db.movs.filter(m => m.id !== id);
+      const willDeduct = newOrderEstado === 'ENTREGADO';
+      if (willDeduct && editOpCart.length) {
+        editOpCart.forEach(it => {
+          const invItem = db.inv.find(x => x.codigo === it.codigo);
+          if (invItem) invItem.stock = Number(invItem.stock) - Number(it.qty);
+        });
+      }
       db.orders.unshift({
         id: 'ORD-' + Date.now(),
         fecha: newFecha,
         cliente: compositeCli,
+        zona: matchedCli ? (matchedCli.zona || '') : '',
         ruta: matchedCli ? (matchedCli.ruta || 'A DEFINIR') : 'A DEFINIR',
         items: [...editOpCart],
         detalleManual: editOpCart.length ? '' : newDetalle,
         totalEstimado: newMonto,
         sena: 0,
         estado: newOrderEstado,
+        stockDeducted: willDeduct,
         notas: newObs
       });
     } else {
       const ord = db.orders.find(o => o.id === id);
       if (ord) {
+        const wasDeducted = Boolean(ord.stockDeducted || ord.estado === 'ENTREGADO');
+        if (wasDeducted && ord.items && ord.items.length) {
+          ord.items.forEach(it => {
+            const invItem = db.inv.find(x => x.codigo === it.codigo);
+            if (invItem) invItem.stock = Number(invItem.stock) + Number(it.qty);
+          });
+        }
+        const shouldDeduct = newOrderEstado === 'ENTREGADO';
+        if (shouldDeduct && editOpCart.length) {
+          editOpCart.forEach(it => {
+            const invItem = db.inv.find(x => x.codigo === it.codigo);
+            if (invItem) invItem.stock = Number(invItem.stock) - Number(it.qty);
+          });
+        }
         ord.fecha = newFecha;
         ord.cliente = compositeCli;
+        if (matchedCli && matchedCli.zona) ord.zona = matchedCli.zona;
         ord.ruta = matchedCli ? (matchedCli.ruta || 'A DEFINIR') : (ord.ruta || 'A DEFINIR');
         ord.items = [...editOpCart];
         ord.detalleManual = editOpCart.length ? '' : newDetalle;
         ord.totalEstimado = newMonto;
         ord.estado = newOrderEstado;
+        ord.stockDeducted = shouldDeduct;
         ord.notas = newObs;
       }
     }
@@ -1023,7 +1083,7 @@ function deleteFromEditOpModal() {
   else deleteMovement(id);
 }
 
-/* --- AGENDA DE AVISOS WHATSAPP Y HABIT TRACKER --- */
+/* --- GESTOR MINIMALISTA DE TAREAS CON DESCRIPCIÓN, FOTOS Y LIGHTBOX --- */
 function findClientByComposite(rawCli) {
   if (!rawCli || isAnonymousClientName(rawCli)) return null;
   const parts = rawCli.split('|');
@@ -1046,11 +1106,99 @@ function autoFillTaskTitle() {
 
   const shortName = cli.includes('|') ? cli.split('|')[1].trim() : cli;
   if (tipo === 'AVISO PAGO') {
-    titleInput.value = `Avisar por WhatsApp a ${shortName} sobre saldo pendiente`;
+    titleInput.value = `Avisar a ${shortName} sobre saldo pendiente`;
   } else if (tipo === 'GRABAR POLO') {
-    titleInput.value = `Grabar video con polo barbero en local de ${shortName}`;
+    titleInput.value = `Grabar polo barbero en local de ${shortName}`;
   } else if (tipo === 'AVISO RUTA') {
-    titleInput.value = `Avisar a ${shortName} que mañana pasamos por su zona`;
+    titleInput.value = `Avisar a ${shortName} visita en su zona`;
+  }
+}
+
+function compressTaskImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 900;
+        let { width, height } = img;
+        if (width > maxSide || height > maxSide) {
+          if (width >= height) {
+            height = Math.round((height * maxSide) / width);
+            width = maxSide;
+          } else {
+            width = Math.round((width * maxSide) / height);
+            height = maxSide;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.onerror = reject;
+      img.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleTaskImagesSelect(event, mode) {
+  const files = Array.from(event.target.files || []);
+  if (!files.length) return;
+  const targetArr = mode === 'edit' ? editTaskImages : newTaskImages;
+
+  for (const file of files) {
+    if (targetArr.length >= 6) {
+      showToast('Máximo 6 fotos por tarea');
+      break;
+    }
+    try {
+      const dataUrl = await compressTaskImage(file);
+      targetArr.push(dataUrl);
+    } catch (err) {
+      console.error('Error procesando imagen:', err);
+    }
+  }
+  event.target.value = '';
+  renderTaskImagePreviews(mode);
+}
+
+function removeTaskImage(mode, idx) {
+  if (mode === 'edit') editTaskImages.splice(idx, 1);
+  else newTaskImages.splice(idx, 1);
+  renderTaskImagePreviews(mode);
+}
+
+function renderTaskImagePreviews(mode) {
+  const containerId = mode === 'edit' ? 'edit-task-images-preview' : 'task-images-preview';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const arr = mode === 'edit' ? editTaskImages : newTaskImages;
+
+  container.innerHTML = arr.map((src, idx) => `
+    <div class="task-thumb-edit-item">
+      <img src="${src}" alt="Adjunto" onclick="openLightbox('${src}')" />
+      <button type="button" class="task-thumb-remove" onclick="removeTaskImage('${mode}', ${idx})" title="Quitar">✕</button>
+    </div>
+  `).join('');
+}
+
+function openLightbox(src) {
+  const lb = document.getElementById('image-lightbox');
+  const img = document.getElementById('lightbox-img');
+  if (!lb || !img) return;
+  img.src = src;
+  lb.style.display = 'flex';
+}
+
+function closeLightbox(event) {
+  if (!event || event.target.id === 'image-lightbox') {
+    const lb = document.getElementById('image-lightbox');
+    if (lb) lb.style.display = 'none';
   }
 }
 
@@ -1067,6 +1215,7 @@ async function saveScheduledTask(e) {
   const tipo = document.getElementById('task-tipo').value;
   const cliente = document.getElementById('task-cliente').value.trim().toUpperCase();
   const titulo = document.getElementById('task-titulo').value.trim();
+  const desc = (document.getElementById('task-desc')?.value || '').trim();
 
   db.tasks.unshift({
     id: 'TSK-' + Date.now(),
@@ -1074,13 +1223,18 @@ async function saveScheduledTask(e) {
     tipo,
     cliente,
     titulo,
+    desc,
+    images: [...newTaskImages],
     done: false
   });
 
   document.getElementById('task-cliente').value = '';
   document.getElementById('task-titulo').value = '';
+  if (document.getElementById('task-desc')) document.getElementById('task-desc').value = '';
+  newTaskImages = [];
+  renderTaskImagePreviews('new');
   await persistData();
-  showToast('📅 Tarea / aviso programado en la agenda');
+  showToast('✅ Tarea guardada');
 }
 
 function openEditTaskModal(id) {
@@ -1088,9 +1242,14 @@ function openEditTaskModal(id) {
   if (!t) return;
   document.getElementById('edit-task-id').value = t.id;
   document.getElementById('edit-task-fecha').value = t.fecha || todayISO();
-  document.getElementById('edit-task-tipo').value = t.tipo || 'AVISO PAGO';
+  document.getElementById('edit-task-tipo').value = t.tipo || 'GENERAL';
   document.getElementById('edit-task-cliente').value = t.cliente || '';
   document.getElementById('edit-task-titulo').value = t.titulo || '';
+  if (document.getElementById('edit-task-desc')) {
+    document.getElementById('edit-task-desc').value = t.desc || '';
+  }
+  editTaskImages = Array.isArray(t.images) ? [...t.images] : [];
+  renderTaskImagePreviews('edit');
   document.getElementById('task-modal').style.display = 'flex';
 }
 
@@ -1104,10 +1263,12 @@ async function saveEditedTask(e) {
   t.tipo = document.getElementById('edit-task-tipo').value;
   t.cliente = document.getElementById('edit-task-cliente').value.trim().toUpperCase();
   t.titulo = document.getElementById('edit-task-titulo').value.trim();
+  t.desc = (document.getElementById('edit-task-desc')?.value || '').trim();
+  t.images = [...editTaskImages];
 
   closeModal('task-modal');
   await persistData();
-  showToast('📅 Tarea actualizada');
+  showToast('✏️ Tarea actualizada');
 }
 
 async function toggleTaskDone(id) {
@@ -1115,62 +1276,14 @@ async function toggleTaskDone(id) {
   if (!t) return;
   t.done = !t.done;
   await persistData();
-  showToast(t.done ? '✅ Tarea completada' : 'Tarea marcada como pendiente');
+  showToast(t.done ? '✔ Tarea completada' : 'Tarea marcada como pendiente');
 }
 
 async function deleteScheduledTask(id) {
-  if (!confirm('¿Eliminar esta tarea programada?')) return;
+  if (!confirm('¿Eliminar esta tarea?')) return;
   db.tasks = db.tasks.filter(x => x.id !== id);
   await persistData();
   showToast('Tarea eliminada');
-}
-
-async function toggleHabitDone(id) {
-  const h = db.habits.find(x => x.id === id);
-  if (!h) return;
-  h.done = !h.done;
-  await persistData();
-}
-
-async function addHabitItem(e) {
-  e.preventDefault();
-  const day = document.getElementById('habit-day').value;
-  const text = document.getElementById('habit-text').value.trim();
-  if (!text) return;
-
-  db.habits.push({
-    id: 'HAB-' + Date.now(),
-    day,
-    text,
-    done: false
-  });
-
-  document.getElementById('habit-text').value = '';
-  await persistData();
-  showToast('Hábito agregado a la rutina semanal');
-}
-
-async function editHabitItem(id) {
-  const h = db.habits.find(x => x.id === id);
-  if (!h) return;
-  const updated = prompt('Editar hábito semanal:', h.text);
-  if (updated !== null && updated.trim()) {
-    h.text = updated.trim();
-    await persistData();
-    showToast('Hábito actualizado');
-  }
-}
-
-async function deleteHabitItem(id) {
-  db.habits = db.habits.filter(x => x.id !== id);
-  await persistData();
-}
-
-async function resetWeeklyHabits() {
-  if (!confirm('¿Desmarcar todos los hábitos para iniciar una semana nueva?')) return;
-  db.habits.forEach(h => h.done = false);
-  await persistData();
-  showToast('↻ Rutina semanal reiniciada');
 }
 
 function renderAgenda() {
@@ -1178,76 +1291,46 @@ function renderAgenda() {
   if (!listEl) return;
 
   const today = todayISO();
-  let tasks = [...(db.tasks || [])].sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
+  let tasks = [...(db.tasks || [])].sort((a, b) => {
+    if (Boolean(a.done) !== Boolean(b.done)) return a.done ? 1 : -1;
+    return (a.fecha || '').localeCompare(b.fecha || '');
+  });
 
   if (activeTaskFilter === 'PENDIENTES') tasks = tasks.filter(t => !t.done);
-  else if (activeTaskFilter === 'HOY') tasks = tasks.filter(t => !t.done && t.fecha === today);
-  else if (activeTaskFilter === 'ATRASADAS') tasks = tasks.filter(t => !t.done && t.fecha < today);
   else if (activeTaskFilter === 'HECHAS') tasks = tasks.filter(t => t.done);
 
   listEl.innerHTML = tasks.length ? tasks.map(t => {
     const isOverdue = !t.done && t.fecha < today;
     const isToday = !t.done && t.fecha === today;
     const cardClass = t.done ? 'task-done' : (isOverdue ? 'task-overdue' : (isToday ? 'task-today' : ''));
-    const badgeClass = t.tipo === 'GRABAR POLO' ? 'badge-purple' : (t.tipo === 'AVISO PAGO' ? 'badge-amber' : 'badge-blue');
-    const dateLabel = isOverdue ? `⚠️ Atrasada (${t.fecha})` : (isToday ? `📅 HOY (${t.fecha})` : `🗓 ${t.fecha}`);
-
     const cliObj = findClientByComposite(t.cliente);
     const waUrl = buildWhatsAppLinkForClient(cliObj, t.tipo);
+    const imgs = Array.isArray(t.images) ? t.images : [];
+    const thumbsHtml = imgs.length
+      ? `<div class="task-thumbs-row">${imgs.map(src => `<img src="${src}" class="task-thumb-img" alt="Adjunto" onclick="openLightbox('${src}')" />`).join('')}</div>`
+      : '';
+    const metaParts = [t.fecha];
+    if (t.cliente) metaParts.push(t.cliente);
 
     return `
       <div class="task-card ${cardClass}">
         <div style="display:flex; align-items:flex-start; gap:12px; min-width:0; flex:1;">
-          <button class="task-check-btn ${t.done ? 'checked' : ''}" onclick="toggleTaskDone('${t.id}')">${t.done ? '✓' : ''}</button>
+          <button class="task-check-btn ${t.done ? 'checked' : ''}" onclick="toggleTaskDone('${t.id}')" title="${t.done ? 'Marcar pendiente' : 'Completar'}">✔</button>
           <div style="min-width:0; flex:1;">
-            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:4px;">
-              <span class="kpi-badge ${badgeClass}">${t.tipo}</span>
-              <span class="muted" style="font-size:11.5px; font-weight:600;">${dateLabel}</span>
-            </div>
-            <div class="font-bold" style="font-size:13.5px; ${t.done ? 'text-decoration:line-through;' : ''}">${t.titulo}</div>
-            ${t.cliente ? `<div class="muted" style="font-size:12px; margin-top:2px;">💈 ${t.cliente}</div>` : ''}
+            <div class="font-bold" style="font-size:14px; ${t.done ? 'text-decoration:line-through;' : ''}">${escapeAttr(t.titulo)}</div>
+            ${t.desc ? `<div class="task-desc-text">${escapeAttr(t.desc)}</div>` : ''}
+            <div class="muted" style="font-size:11.5px; margin-top:4px;">${isOverdue ? '⚠️ ' : ''}${escapeAttr(metaParts.join(' · '))}</div>
+            ${thumbsHtml}
           </div>
         </div>
         <div class="action-icon-group" style="flex-shrink:0;">
           ${waUrl ? `<a href="${waUrl}" target="_blank" class="btn-sm btn-wa">WA</a>` : ''}
-          <button class="btn-icon" onclick="openEditTaskModal('${t.id}')" title="Editar tarea">✏️</button>
+          <button class="btn-icon" onclick="openEditTaskModal('${t.id}')" title="Editar">✏️</button>
           <button class="btn-icon btn-icon-del" onclick="deleteScheduledTask('${t.id}')" title="Eliminar">🗑</button>
         </div>
       </div>
     `;
   }).join('') : `<p class="muted" style="padding:18px; text-align:center;">No hay tareas en esta vista.</p>`;
-
-  const habitsEl = document.getElementById('habits-weekly-container');
-  if (habitsEl) {
-    const dayMap = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
-    const currentDayCode = dayMap[new Date().getDay()];
-    const dayOrder = { LUN: 1, MAR: 2, MIE: 3, JUE: 4, VIE: 5, SAB: 6, DOM: 7 };
-
-    const sortedHabits = [...(db.habits || [])].sort((a, b) => (dayOrder[a.day] || 9) - (dayOrder[b.day] || 9));
-    const doneCount = sortedHabits.filter(h => h.done).length;
-    const totalCount = sortedHabits.length;
-    const pct = totalCount ? Math.round((doneCount / totalCount) * 100) : 0;
-
-    document.getElementById('habit-progress-text').textContent = `${pct}% (${doneCount}/${totalCount})`;
-    document.getElementById('habit-progress-bar').style.width = `${pct}%`;
-
-    habitsEl.innerHTML = sortedHabits.map(h => {
-      const isTodayDay = h.day === currentDayCode;
-      return `
-        <div class="habit-row ${isTodayDay ? 'habit-today-highlight' : ''}">
-          <div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
-            <button class="task-check-btn ${h.done ? 'checked' : ''}" onclick="toggleHabitDone('${h.id}')">${h.done ? '✓' : ''}</button>
-            <span class="habit-day-pill">${h.day}</span>
-            <span style="font-size:12.5px; ${h.done ? 'text-decoration:line-through; opacity:0.6;' : ''}">${h.text}</span>
-          </div>
-          <div class="action-icon-group">
-            <button class="btn-icon" onclick="editHabitItem('${h.id}')" style="font-size:12px;" title="Editar">✏️</button>
-            <button class="btn-icon btn-icon-del" onclick="deleteHabitItem('${h.id}')" style="font-size:12px;" title="Quitar">✕</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
 }
 
 function quickPayment(barberia, barbero, saldo) {
@@ -1525,229 +1608,524 @@ async function callGeminiWithFallback(partsArray) {
 }
 
 /* BUSCA SI EL TEXTO DE UN ÍTEM COINCIDE CON UN ARTÍCULO DEL INVENTARIO PARA DESCONTAR STOCK */
-function matchInventoryItemsFromLine(descLine) {
-  const clean = (descLine || '').replace(/\$\s*[\d.,]+/g, '').trim();
-  const qtyMatch = clean.match(/^(\d+)\s*(?:x\s*)?(.+)$/i);
-  const qty = qtyMatch ? Math.max(1, Number(qtyMatch[1])) : 1;
-  const prodName = (qtyMatch ? qtyMatch[2] : clean).replace(/[-–=]/g, ' ').trim().toUpperCase();
-
-  if (prodName.length < 3) return [];
-  const words = prodName.split(/\s+/).filter(w => w.length >= 3);
-  if (!words.length) return [];
-
-  const found = db.inv.find(p => {
-    const invUpper = (p.producto || '').toUpperCase();
-    return invUpper.includes(prodName) || words.every(w => invUpper.includes(w));
-  });
-
-  if (!found) return [];
-  return [{
-    codigo: found.codigo,
-    producto: found.producto,
-    qty,
-    precio: Number(found.venta) || 0
-  }];
+function stripAccents(str) {
+  return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-/* ANALIZADOR LOCAL INSTANTÁNEO PARA LISTADOS CON O SIN NOMBRE DE CLIENTE */
-function parseStructuredSummaryLocally(rawText) {
-  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  if (!lines.length) return [];
+function parseArsAmount(str) {
+  if (!str) return 0;
+  const s = String(str).trim().toLowerCase();
+  const milOrK = s.match(/([\d.,]+)\s*(?:mil|k)\b/i);
+  if (milOrK) {
+    const base = parseFloat(milOrK[1].replace(/\./g, '').replace(',', '.'));
+    return Number.isFinite(base) ? Math.round(base * 1000) : 0;
+  }
+  const clean = s.replace(/\$\s*/g, '').replace(/\./g, '').replace(/,/g, '.');
+  const m = clean.match(/\d+(?:\.\d+)?/);
+  return m ? Math.round(Number(m[0])) : 0;
+}
 
-  const ops = [];
+function matchInventoryItemsFromLine(descLine) {
+  const cleanLine = (descLine || '')
+    .replace(/\$\s*[\d.,]+(?:\s*(?:mil|k))?/gi, '')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:mil|k)\b/gi, '')
+    .replace(/\b(?:contado|cr[eé]dito|fiado|efectivo|transferencia|mp|mercado\s*pago|abono|pagado|completo|pedido|encargo|cta\s*cte|cuenta\s*corriente)\b/gi, '')
+    .trim();
+
+  if (!cleanLine) return [];
+
+  const chunks = cleanLine.split(/\s*(?:,|\+|\sy\s)\s*/i).map(c => c.trim()).filter(Boolean);
+  const foundMap = new Map();
+
+  for (const chunk of chunks) {
+    const qtyMatch = chunk.match(/^(\d+)\s*(?:x\s*)?(.+)$/i);
+    const qty = qtyMatch ? Math.max(1, Number(qtyMatch[1])) : 1;
+    const prodName = stripAccents((qtyMatch ? qtyMatch[2] : chunk).replace(/[-–=:|]/g, ' ').trim()).toUpperCase();
+
+    if (prodName.length < 3) continue;
+    const words = prodName.split(/\s+/).filter(w => w.length >= 3);
+    if (!words.length) continue;
+
+    const found = db.inv.find(p => {
+      const invUpper = stripAccents((p.producto || '').toUpperCase());
+      return invUpper.includes(prodName) || words.every(w => {
+        if (invUpper.includes(w)) return true;
+        if (w.endsWith('ES') && w.length > 4 && invUpper.includes(w.slice(0, -2))) return true;
+        if (w.endsWith('S') && w.length > 3 && invUpper.includes(w.slice(0, -1))) return true;
+        return false;
+      });
+    });
+
+    if (found) {
+      const prev = foundMap.get(found.codigo);
+      if (prev) prev.qty += qty;
+      else {
+        foundMap.set(found.codigo, {
+          codigo: found.codigo,
+          producto: found.producto,
+          qty,
+          precio: Number(found.venta) || 0
+        });
+      }
+    }
+  }
+
+  return Array.from(foundMap.values());
+}
+
+function normalizeZoneName(raw) {
+  const z = stripAccents((raw || '').trim()).toUpperCase();
+  if (!z) return '';
+  if (z.includes('CELINA')) return 'VILLA CELINA';
+  if (z.includes('LINIERS')) return 'LINIERS';
+  if (z.includes('VIRREYES')) return 'VIRREYES';
+  if (z.includes('FLORES') && z.includes('POMPEYA')) return 'FLORES / POMPEYA';
+  if (z.includes('POMPEYA')) return 'POMPEYA';
+  if (z.includes('FLORES')) return 'FLORES';
+  return (raw || '').trim().toUpperCase();
+}
+
+function resolveOperationZona(op) {
+  if (op && op.zona && op.zona.trim()) return normalizeZoneName(op.zona);
+  const b1 = (op?.barberia || '').trim().toUpperCase();
+  const b2 = (op?.barbero || '').trim().toUpperCase();
+  const composite = op?.cliente || (b2 ? `${b1} | ${b2}` : b1);
+
+  if (isAnonymousClientName(b1) || isAnonymousClientName(composite)) {
+    return 'MOSTRADOR / SIN ZONA';
+  }
+
+  const matched = findClientByComposite(composite);
+  if (matched) {
+    if (matched.zona && matched.zona.trim()) return normalizeZoneName(matched.zona);
+    if (matched.ruta && matched.ruta.trim() && matched.ruta !== 'A DEFINIR') return matched.ruta.toUpperCase();
+  }
+  return 'SIN ZONA';
+}
+
+function resolveClientCandidate(rawWho, explicitZone = '') {
+  const cleanWho = (rawWho || '').replace(/^\d+[.)]\s*/, '').replace(/^[-•*]\s*/, '').trim();
+  if (!cleanWho || isAnonymousClientName(cleanWho)) {
+    return { cliente: CONSUMIDOR_FINAL_COMPOSITE, zona: normalizeZoneName(explicitZone) };
+  }
+
+  let baseName = cleanWho;
+  let zonaFmt = normalizeZoneName(explicitZone);
+
+  const parenMatch = cleanWho.match(/^([^(]+)\(([^)]+)\)/);
+  if (parenMatch) {
+    baseName = parenMatch[1].trim();
+    if (!zonaFmt) zonaFmt = normalizeZoneName(parenMatch[2].trim());
+  }
+
+  const normBase = stripAccents(baseName).toUpperCase();
+  const normZone = stripAccents(zonaFmt).toUpperCase();
+
+  let matched = null;
+  if (baseName.includes('|')) {
+    matched = findClientByComposite(baseName);
+  }
+  if (!matched) {
+    const candidates = (db.clients || []).filter(c => {
+      const cb1 = stripAccents((c.barberia || '').toUpperCase());
+      const cb2 = stripAccents((c.barbero || '').toUpperCase());
+      return cb2 === normBase || cb1 === normBase || `${cb1} | ${cb2}` === normBase || cb2.includes(normBase) || cb1.includes(normBase);
+    });
+    if (candidates.length === 1) {
+      matched = candidates[0];
+    } else if (candidates.length > 1 && normZone) {
+      matched = candidates.find(c => stripAccents((c.zona || '').toUpperCase()).includes(normZone)) || candidates[0];
+    } else if (candidates.length > 1) {
+      matched = candidates.find(c => stripAccents((c.barbero || '').toUpperCase()) === normBase) || candidates[0];
+    }
+  }
+
+  if (matched) {
+    return {
+      cliente: `${matched.barberia} | ${matched.barbero}`,
+      zona: zonaFmt || normalizeZoneName(matched.zona || '')
+    };
+  }
+
+  const upperName = baseName.toUpperCase();
+  if (upperName.includes('|')) {
+    return { cliente: upperName, zona: zonaFmt };
+  }
+  if (zonaFmt) {
+    return { cliente: `${zonaFmt} | ${upperName}`, zona: zonaFmt };
+  }
+  return { cliente: upperName, zona: '' };
+}
+
+/* ANALIZADOR LOCAL INSTANTÁNEO DE 2 MODOS (MODO RÁPIDO 1 CLIENTE vs MODO LOTE AISLADO) */
+function splitIntoIsolatedBlocks(rawText) {
+  const lines = rawText.split(/\r?\n/);
+  const blocks = [];
   let inOrdersSection = false;
+  let currentGroup = [];
 
-  const parseArs = (str) => {
-    if (!str) return 0;
-    const clean = str.replace(/\./g, '').replace(/,/g, '');
-    const m = clean.match(/\d+/);
-    return m ? Number(m[0]) : 0;
+  const hasExplicitBulletsOrColons = lines.some(l => /^[-•*]\s+/.test(l.trim()) || /^\d+[.)]\s+/.test(l.trim()));
+
+  const flushGroup = () => {
+    if (!currentGroup.length) return;
+    blocks.push({ text: currentGroup.join(' | '), rawLines: [...currentGroup], inOrdersSection });
+    currentGroup = [];
   };
 
-  for (const line of lines) {
-    const upper = line.toUpperCase();
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      flushGroup();
+      continue;
+    }
+
+    const upper = trimmed.toUpperCase();
     if (upper.includes('PEDIDOS PENDIENTES') || upper.startsWith('2. PEDIDOS')) {
+      flushGroup();
       inOrdersSection = true;
       continue;
     }
-    if (upper.includes('VENTAS Y COBROS') || upper.startsWith('1.')) {
+    if (upper.includes('VENTAS Y COBROS') || upper.startsWith('1. VENTAS')) {
+      flushGroup();
       inOrdersSection = false;
       continue;
     }
-    if (upper.includes('TOTALES DEL DÍA') || upper.startsWith('TOTAL ')) continue;
-
-    const cleanLine = line.replace(/^[-•*]\s*/, '').trim();
-    if (!cleanLine) continue;
-
-    // CASO A: LÍNEA SIN NOMBRE DE CLIENTE (Ej: "- 3 capas $15000" o "2 cuchillas Magic Clip = $24.000")
-    if (!cleanLine.includes(':')) {
-      const priceMatch = cleanLine.match(/(?:=\s*)?\$\s*([\d.]+)/) || cleanLine.match(/\b(\d{4,})\s*$/);
-      const matchedItems = matchInventoryItemsFromLine(cleanLine);
-      let amount = priceMatch ? parseArs(priceMatch[1]) : 0;
-      if (!amount && matchedItems.length) {
-        amount = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
-      }
-
-      if (amount > 0 || matchedItems.length > 0) {
-        const cleanDetail = cleanLine.replace(/(?:=\s*)?\$\s*[\d.]+/g, '').trim() || cleanLine;
-        ops.push({
-          tipo: 'VENTA CONTADO',
-          cliente: CONSUMIDOR_FINAL_COMPOSITE,
-          zona: '',
-          items: matchedItems,
-          resolvedItems: matchedItems,
-          montoManual: amount,
-          medio: upper.includes('TRANSFER') ? 'TRANSFERENCIA' : 'EFECTIVO',
-          notas: cleanDetail
-        });
-      }
+    if (upper.includes('TOTALES DEL DÍA') || upper.includes('TOTALES DEL DIA') || /^TOTAL\s+(DEL\s+D[IÍ]A|COBRADO|VENDIDO)/i.test(trimmed)) {
+      flushGroup();
       continue;
     }
 
-    // CASO B: LÍNEA CON CLIENTE ("Cliente: detalle...")
-    const colonIdx = cleanLine.indexOf(':');
-    const rawWho = cleanLine.slice(0, colonIdx).trim();
-    const rest = cleanLine.slice(colonIdx + 1).trim();
-
-    let clienteFmt = isAnonymousClientName(rawWho) ? CONSUMIDOR_FINAL_COMPOSITE : rawWho.toUpperCase();
-    let zonaFmt = '';
-    if (!isAnonymousClientName(rawWho)) {
-      const parenMatch = rawWho.match(/^([^(]+)\(([^)]+)\)/);
-      if (parenMatch) {
-        const nombre = parenMatch[1].trim().toUpperCase();
-        const lugar = parenMatch[2].trim().toUpperCase();
-        clienteFmt = `${lugar} | ${nombre}`;
-        if (lugar.includes('CELINA')) zonaFmt = 'VILLA CELINA';
-      } else {
-        const matched = db.clients.find(c =>
-          (c.barbero || '').toUpperCase() === clienteFmt ||
-          (c.barberia || '').toUpperCase() === clienteFmt
-        );
-        if (matched) clienteFmt = `${matched.barberia} | ${matched.barbero}`;
-      }
+    const isNewItemLine = /^[-•*]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed) || /^[^:]{2,45}:\s*/.test(trimmed);
+    if (isNewItemLine && currentGroup.length) {
+      flushGroup();
     }
 
-    const segments = rest.split('|').map(s => s.trim());
-    const mainDesc = segments[0] || rest;
-    const paySeg = segments[1] || '';
-    const medio = rest.toLowerCase().includes('transferencia') ? 'TRANSFERENCIA' : 'EFECTIVO';
+    currentGroup.push(trimmed);
 
-    if (inOrdersSection) {
-      const totalM = rest.match(/Total(?:\s+pedido)?:\s*\$\s*([\d.]+)/i) || mainDesc.match(/\(\$\s*([\d.]+)\)/);
-      const senaM = rest.match(/Seña:\s*\$\s*([\d.]+)/i);
-      const totalVal = totalM ? parseArs(totalM[1]) : 0;
-      const senaVal = senaM ? parseArs(senaM[1]) : 0;
+    if (hasExplicitBulletsOrColons && (/^[-•*]/.test(trimmed) || /^\d+[.)]/.test(trimmed))) {
+      flushGroup();
+    }
+  }
+  flushGroup();
+
+  // Si hubo bloques de 2 líneas tipo "Lucas (Liniers)" + "2 capas $10000 contado", unirlos en un único bloque de cliente
+  const merged = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const blk = blocks[i];
+    const next = blocks[i + 1];
+    const hasAmountOrProd = /\$\s*[\d.,]+|\b\d+\s*(?:mil|k)\b|\b(?:abono|pago|contado|cr[eé]dito|fiado|pedido)\b/i.test(blk.text);
+    if (blk.rawLines.length === 1 && !hasAmountOrProd && !blk.text.includes(':') && next) {
+      merged.push({
+        text: `${blk.rawLines[0]}: ${next.text}`,
+        rawLines: [blk.rawLines[0], ...next.rawLines],
+        inOrdersSection: blk.inOrdersSection || next.inOrdersSection
+      });
+      i++;
+    } else {
+      merged.push(blk);
+    }
+  }
+
+  return merged;
+}
+
+function parseSingleBlockIsolated(block) {
+  const ops = [];
+  const rawLine = block.text.replace(/^[-•*]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+  if (!rawLine) return ops;
+
+  const upper = rawLine.toUpperCase();
+  const inOrdersSection = Boolean(block.inOrdersSection);
+
+  // Detectar separador entre cliente y operación: ":", " - " o primera línea sin colon si empieza con "Nombre (Zona) ..."
+  let rawWho = '';
+  let rest = rawLine;
+
+  const colonIdx = rawLine.indexOf(':');
+  if (colonIdx > 0 && colonIdx <= 48) {
+    rawWho = rawLine.slice(0, colonIdx).trim();
+    rest = rawLine.slice(colonIdx + 1).trim();
+  } else {
+    const dashMatch = rawLine.match(/^([A-Za-zÁÉÍÓÚÑáéíóúñ0-9\s.|()]{2,36}?)\s+[-–]\s+(.+)$/);
+    const parenFront = rawLine.match(/^([^(]{2,32}\([^)]+\))\s+(.+)$/);
+    if (parenFront) {
+      rawWho = parenFront[1].trim();
+      rest = parenFront[2].trim();
+    } else if (dashMatch && !/^\d/.test(dashMatch[1].trim())) {
+      rawWho = dashMatch[1].trim();
+      rest = dashMatch[2].trim();
+    } else {
+      // Buscar coincidencia de cliente conocido al inicio (ej: "Lucas 2 capas 10000 contado")
+      const firstWord = stripAccents(rawLine.split(/\s+/)[0] || '').toUpperCase();
+      const twoWords = stripAccents(rawLine.split(/\s+/).slice(0, 2).join(' ')).toUpperCase();
+      const matchedCli = (db.clients || []).find(c => {
+        const b1 = stripAccents((c.barberia || '').toUpperCase());
+        const b2 = stripAccents((c.barbero || '').toUpperCase());
+        return (twoWords.length >= 4 && (b1 === twoWords || b2 === twoWords)) ||
+               (firstWord.length >= 3 && (b1 === firstWord || b2 === firstWord));
+      });
+      if (matchedCli) {
+        const usedLen = (stripAccents(matchedCli.barbero || '').toUpperCase() === twoWords || stripAccents(matchedCli.barberia || '').toUpperCase() === twoWords)
+          ? rawLine.split(/\s+/).slice(0, 2).join(' ').length
+          : (rawLine.split(/\s+/)[0] || '').length;
+        rawWho = rawLine.slice(0, usedLen).trim();
+        rest = rawLine.slice(usedLen).trim();
+      }
+    }
+  }
+
+  const medio = /transfer|mp\b|mercado\s*pago|alias/i.test(rest) ? 'TRANSFERENCIA' : 'EFECTIVO';
+
+  // Caso sin cliente identificable -> Venta de Contado Mostrador
+  if (!rawWho) {
+    const amountM = rest.match(/(?:=\s*)?\$\s*([\d.,]+(?:\s*(?:mil|k))?)/i) ||
+                    rest.match(/\b(\d+(?:[.,]\d+)?\s*(?:mil|k))\b/i) ||
+                    rest.match(/\b(\d{4,})\b(?:\s*(?:contado|efectivo|transferencia|cr[eé]dito|fiado))?$/i);
+    const matchedItems = matchInventoryItemsFromLine(rest);
+    let amount = amountM ? parseArsAmount(amountM[1]) : 0;
+    if (!amount && matchedItems.length) {
+      amount = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
+    }
+
+    if (amount > 0 || matchedItems.length > 0) {
+      const isOrder = inOrdersSection || /\b(?:pedido|encargo)\b/i.test(rest);
+      const isCredit = /\b(?:cr[eé]dito|fiado|debe|cta\s*cte|cuenta\s*corriente)\b/i.test(rest);
+      const cleanDetail = rest
+        .replace(/(?:=\s*)?\$\s*[\d.,]+(?:\s*(?:mil|k))?/gi, '')
+        .replace(/\b\d+(?:[.,]\d+)?\s*(?:mil|k)\b/gi, '')
+        .replace(/\b(?:contado|cr[eé]dito|fiado|efectivo|transferencia|mp|mercado\s*pago)\b/gi, '')
+        .trim() || rest;
 
       ops.push({
-        tipo: 'PEDIDO',
-        cliente: clienteFmt,
-        zona: zonaFmt,
-        items: [],
-        montoManual: totalVal,
-        sena: senaVal,
-        medio: 'EFECTIVO',
-        notas: rest
+        tipo: isOrder ? 'PEDIDO' : (isCredit ? 'VENTA A CREDITO' : 'VENTA CONTADO'),
+        cliente: CONSUMIDOR_FINAL_COMPOSITE,
+        zona: '',
+        items: matchedItems,
+        resolvedItems: matchedItems,
+        montoManual: amount,
+        medio: isCredit ? 'CUENTA CORRIENTE' : medio,
+        notas: cleanDetail
       });
-      continue;
     }
+    return ops;
+  }
 
-    const abonoPlusSale = mainDesc.match(/Abono\s+(?:deuda\s*)?\(\$\s*([\d.]+)\)\s*\+\s*(.+)/i);
-    if (abonoPlusSale) {
-      const abonoVal = parseArs(abonoPlusSale[1]);
-      const prodPart = abonoPlusSale[2].trim();
-      const prodPriceM = prodPart.match(/\(\$\s*([\d.]+)\)/);
-      const prodVal = prodPriceM ? parseArs(prodPriceM[1]) : 0;
+  const { cliente: clienteFmt, zona: zonaFmt } = resolveClientCandidate(rawWho);
+  const segments = rest.split('|').map(s => s.trim()).filter(Boolean);
+  const mainDesc = segments[0] || rest;
+  const paySeg = segments[1] || '';
 
-      if (abonoVal > 0) {
-        ops.push({
-          tipo: 'ABONO / PAGO',
-          cliente: clienteFmt,
-          zona: zonaFmt,
-          items: [],
-          montoManual: abonoVal,
-          medio,
-          notas: 'Abono deuda anterior'
-        });
-      }
-      if (prodVal > 0) {
-        ops.push({
-          tipo: 'VENTA A CREDITO',
-          cliente: clienteFmt,
-          zona: zonaFmt,
-          items: [],
-          montoManual: prodVal,
-          medio: 'CUENTA CORRIENTE',
-          notas: prodPart
-        });
-      }
-      continue;
+  if (inOrdersSection || /^(?:pedido|encargo)\b/i.test(mainDesc)) {
+    const totalM = rest.match(/Total(?:\s+pedido)?:\s*\$?\s*([\d.,]+(?:\s*(?:mil|k))?)/i) ||
+                   rest.match(/\$\s*([\d.,]+(?:\s*(?:mil|k))?)/i) ||
+                   rest.match(/\b(\d+(?:[.,]\d+)?\s*(?:mil|k)|\d{4,})\b/i);
+    const senaM = rest.match(/Seña:\s*\$?\s*([\d.,]+(?:\s*(?:mil|k))?)/i);
+    const cleanItemsText = mainDesc.replace(/^(?:pedido|encargo)\s*:?\s*/i, '');
+    const matchedItems = matchInventoryItemsFromLine(cleanItemsText);
+    let totalVal = totalM ? parseArsAmount(totalM[1]) : 0;
+    if (!totalVal && matchedItems.length) {
+      totalVal = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
     }
+    const senaVal = senaM ? parseArsAmount(senaM[1]) : 0;
 
-    const deudaPlusProd = mainDesc.match(/Tenía deuda de\s*\$\s*([\d.]+)\s*\+\s*(.+)/i);
-    if (deudaPlusProd) {
-      const prodPart = deudaPlusProd[2].trim();
-      const prodPriceM = prodPart.match(/\(\$\s*([\d.]+)\)/);
-      const prodVal = prodPriceM ? parseArs(prodPriceM[1]) : 0;
-      const abonoM = paySeg.match(/Abonó:\s*\$\s*([\d.]+)/i);
-      const abonoVal = abonoM ? parseArs(abonoM[1]) : 0;
+    ops.push({
+      tipo: 'PEDIDO',
+      cliente: clienteFmt,
+      zona: zonaFmt,
+      items: matchedItems,
+      resolvedItems: matchedItems,
+      montoManual: totalVal,
+      sena: senaVal,
+      medio: 'ENCARGO',
+      notas: cleanItemsText
+    });
+    return ops;
+  }
 
-      if (prodVal > 0) {
-        ops.push({
-          tipo: 'VENTA A CREDITO',
-          cliente: clienteFmt,
-          zona: zonaFmt,
-          items: [],
-          montoManual: prodVal,
-          medio: 'CUENTA CORRIENTE',
-          notas: prodPart
-        });
-      }
-      if (abonoVal > 0) {
-        ops.push({
-          tipo: 'ABONO / PAGO',
-          cliente: clienteFmt,
-          zona: zonaFmt,
-          items: [],
-          montoManual: abonoVal,
-          medio,
-          notas: 'Abono en ruta'
-        });
-      }
-      continue;
-    }
+  const abonoPlusSale = mainDesc.match(/Abono\s+(?:deuda\s*)?\(?\$\s*([\d.,]+)\)?\s*\+\s*(.+)/i);
+  if (abonoPlusSale) {
+    const abonoVal = parseArsAmount(abonoPlusSale[1]);
+    const prodPart = abonoPlusSale[2].trim();
+    const prodPriceM = prodPart.match(/\$?\s*([\d.,]+(?:\s*(?:mil|k))?)/i);
+    const matchedItems = matchInventoryItemsFromLine(prodPart);
+    let prodVal = prodPriceM ? parseArsAmount(prodPriceM[1]) : 0;
+    if (!prodVal && matchedItems.length) prodVal = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
 
-    if (/^(Abono|Seña)/i.test(mainDesc)) {
-      const amountM = rest.match(/(?:Abonó:|=\s*)\$\s*([\d.]+)/i) || rest.match(/\$\s*([\d.]+)/);
-      const val = amountM ? parseArs(amountM[1]) : 0;
+    if (abonoVal > 0) {
       ops.push({
         tipo: 'ABONO / PAGO',
         cliente: clienteFmt,
         zona: zonaFmt,
         items: [],
-        montoManual: val,
+        resolvedItems: [],
+        montoManual: abonoVal,
         medio,
-        notas: rest
+        notas: 'Abono deuda anterior'
       });
-      continue;
     }
+    if (prodVal > 0 || matchedItems.length) {
+      ops.push({
+        tipo: 'VENTA A CREDITO',
+        cliente: clienteFmt,
+        zona: zonaFmt,
+        items: matchedItems,
+        resolvedItems: matchedItems,
+        montoManual: prodVal,
+        medio: 'CUENTA CORRIENTE',
+        notas: prodPart
+      });
+    }
+    return ops;
+  }
 
-    const eqM = mainDesc.match(/=\s*\$\s*([\d.]+)/) || mainDesc.match(/\$\s*([\d.]+)/);
-    const saleVal = eqM ? parseArs(eqM[1]) : 0;
-    const isAnon = isAnonymousClientName(clienteFmt);
-    const isContado = isAnon || (/pagado completo|contado|efectivo/i.test(paySeg) && !/pendiente|debe:\s*\$\s*[1-9]/i.test(rest));
+  const deudaPlusProd = mainDesc.match(/Ten[ií]a deuda de\s*\$\s*([\d.,]+)\s*\+\s*(.+)/i);
+  if (deudaPlusProd) {
+    const prodPart = deudaPlusProd[2].trim();
+    const prodPriceM = prodPart.match(/\(\$\s*([\d.,]+)\)/);
+    const matchedItems = matchInventoryItemsFromLine(prodPart);
+    let prodVal = prodPriceM ? parseArsAmount(prodPriceM[1]) : 0;
+    if (!prodVal && matchedItems.length) prodVal = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
+    const abonoM = paySeg.match(/Abon[oó]:\s*\$\s*([\d.,]+)/i);
+    const abonoVal = abonoM ? parseArsAmount(abonoM[1]) : 0;
 
+    if (prodVal > 0 || matchedItems.length) {
+      ops.push({
+        tipo: 'VENTA A CREDITO',
+        cliente: clienteFmt,
+        zona: zonaFmt,
+        items: matchedItems,
+        resolvedItems: matchedItems,
+        montoManual: prodVal,
+        medio: 'CUENTA CORRIENTE',
+        notas: prodPart
+      });
+    }
+    if (abonoVal > 0) {
+      ops.push({
+        tipo: 'ABONO / PAGO',
+        cliente: clienteFmt,
+        zona: zonaFmt,
+        items: [],
+        resolvedItems: [],
+        montoManual: abonoVal,
+        medio,
+        notas: 'Abono en ruta'
+      });
+    }
+    return ops;
+  }
+
+  // Abono / Cobro / Pago puro
+  if (/^(?:abono|abona|abon[oó]|cobro|cobr[eé]|pag[oó]|paga|seña|entrega)\b/i.test(mainDesc)) {
+    const amountM = rest.match(/(?:Abon[oó]|Pag[oó]|Cobr[eé]):\s*\$?\s*([\d.,]+(?:\s*(?:mil|k))?)/i) ||
+                    rest.match(/\$\s*([\d.,]+(?:\s*(?:mil|k))?)/i) ||
+                    rest.match(/\b(\d+(?:[.,]\d+)?\s*(?:mil|k)|\d{3,})\b/i);
+    const val = amountM ? parseArsAmount(amountM[1]) : 0;
     ops.push({
-      tipo: isContado ? 'VENTA CONTADO' : 'VENTA A CREDITO',
+      tipo: 'ABONO / PAGO',
       cliente: clienteFmt,
       zona: zonaFmt,
       items: [],
-      montoManual: saleVal,
-      medio: isContado ? medio : 'CUENTA CORRIENTE',
-      notas: mainDesc
+      resolvedItems: [],
+      montoManual: val,
+      medio,
+      notas: rest
     });
+    return ops;
   }
 
+  // Venta (Contado o Crédito)
+  const matchedItems = matchInventoryItemsFromLine(mainDesc);
+  const priceMatch = mainDesc.match(/(?:=\s*)?\$\s*([\d.,]+(?:\s*(?:mil|k))?)/i) ||
+                     mainDesc.match(/\b(\d+(?:[.,]\d+)?\s*(?:mil|k))\b/i) ||
+                     mainDesc.match(/\b(\d{4,})\b/);
+  let saleVal = priceMatch ? parseArsAmount(priceMatch[1]) : 0;
+  if (!saleVal && matchedItems.length) {
+    saleVal = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
+  }
+
+  const abonoParcialM = rest.match(/(?:entreg[oó]|abon[oó]|dej[oó])\s*\$?\s*([\d.,]+(?:\s*(?:mil|k))?)/i);
+  const abonoParcial = abonoParcialM ? parseArsAmount(abonoParcialM[1]) : 0;
+
+  const isAnon = isAnonymousClientName(clienteFmt);
+  const explicitCredit = /\b(?:cr[eé]dito|fiado|cta\s*cte|cuenta\s*corriente|debe|pendiente)\b/i.test(rest);
+  const explicitContado = /\b(?:contado|pagado\s*completo|efectivo|transferencia|mp|mercado\s*pago)\b/i.test(rest) && !explicitCredit;
+  const isContado = isAnon || explicitContado;
+
+  const cleanNotes = mainDesc
+    .replace(/(?:=\s*)?\$\s*[\d.,]+(?:\s*(?:mil|k))?/gi, '')
+    .replace(/\b\d+(?:[.,]\d+)?\s*(?:mil|k)\b/gi, '')
+    .replace(/\b(?:contado|cr[eé]dito|fiado|efectivo|transferencia|mp|mercado\s*pago)\b/gi, '')
+    .trim() || mainDesc;
+
+  ops.push({
+    tipo: isContado ? 'VENTA CONTADO' : 'VENTA A CREDITO',
+    cliente: clienteFmt,
+    zona: zonaFmt,
+    items: matchedItems,
+    resolvedItems: matchedItems,
+    montoManual: saleVal,
+    abonoParcial: isContado ? 0 : abonoParcial,
+    medio: isContado ? medio : 'CUENTA CORRIENTE',
+    notas: cleanNotes
+  });
+
   return ops;
+}
+
+function parseStructuredSummaryLocally(rawText) {
+  const blocks = splitIntoIsolatedBlocks(rawText);
+  if (!blocks.length) return [];
+  const allOps = [];
+  blocks.forEach(blk => {
+    const blkOps = parseSingleBlockIsolated(blk);
+    blkOps.forEach(op => allOps.push(op));
+  });
+  return allOps;
+}
+
+function showQuickSinglePreview(op) {
+  const box = document.getElementById('quick-single-preview');
+  if (!box) return;
+  const normTipo = normalizeOpType(op.tipo);
+  const cli = op.cliente || CONSUMIDOR_FINAL_COMPOSITE;
+  const zona = resolveOperationZona({ ...op, cliente: cli });
+  const monto = Number(document.getElementById('mov-monto').value) || Number(op.montoManual) || 0;
+  const detalle = document.getElementById('mov-detalle').value.trim() || op.notas || getOpTypeLabel(normTipo);
+  const badgeClass = normTipo === 'ABONO / PAGO' ? 'badge-green' : (normTipo === 'VENTA A CREDITO' ? 'badge-amber' : 'badge-blue');
+
+  box.style.display = 'flex';
+  box.innerHTML = `
+    <div class="quick-preview-top">
+      <div style="min-width:0;">
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+          <span class="kpi-badge badge-green">⚡ Modo Rápido</span>
+          <span class="kpi-badge ${badgeClass}">${getOpTypeLabel(normTipo)}</span>
+          ${zona && zona !== 'MOSTRADOR / SIN ZONA' ? `<span class="kpi-badge badge-purple">📍 ${escapeAttr(zona)}</span>` : ''}
+        </div>
+        <div class="font-bold" style="font-size:13.5px;">${escapeAttr(cli)}</div>
+        <div class="muted" style="font-size:12px;">${escapeAttr(detalle)}</div>
+      </div>
+      <div class="font-bold" style="font-size:18px; color:#fff; flex-shrink:0;">${fmtMoney(monto)}</div>
+    </div>
+    <div class="quick-preview-actions">
+      <button type="button" class="btn-primary" style="padding:8px 14px; font-size:12.5px; flex:1;" onclick="confirmQuickSinglePreview()">✅ Confirmar y Guardar</button>
+      <button type="button" class="btn-ghost" style="padding:8px 12px; font-size:12.5px;" onclick="dismissQuickSinglePreview()">✏️ Editar abajo</button>
+    </div>
+  `;
+}
+
+function dismissQuickSinglePreview() {
+  const box = document.getElementById('quick-single-preview');
+  if (box) box.style.display = 'none';
+  document.getElementById('mov-monto')?.focus();
+}
+
+function confirmQuickSinglePreview() {
+  const box = document.getElementById('quick-single-preview');
+  if (box) box.style.display = 'none';
+  const form = document.getElementById('mov-form');
+  if (form) form.requestSubmit();
 }
 
 function processWhatsAppAudioFile(file) {
@@ -1758,8 +2136,8 @@ function processWhatsAppAudioFile(file) {
   }
 
   const dropHint = document.getElementById('drop-hint-text');
-  if (dropHint) dropHint.innerHTML = `⏳ Escuchando audio completo <strong>${file.name}</strong>...`;
-  showToast('Analizando todas las operaciones del audio con Gemini...');
+  if (dropHint) dropHint.innerHTML = `⏳ Escuchando audio <strong>${escapeAttr(file.name)}</strong>...`;
+  showToast('Analizando audio con Gemini...');
 
   const reader = new FileReader();
   reader.onload = async () => {
@@ -1782,15 +2160,17 @@ function processWhatsAppAudioFile(file) {
       if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
         closeBatchReview();
         applyParsedCommandToForm(ops[0] || {});
+        showQuickSinglePreview(ops[0] || {});
       } else {
+        dismissQuickSinglePreview();
         document.getElementById('detected-order-banner').style.display = 'none';
         renderBatchReview(ops);
       }
 
-      if (dropHint) dropHint.innerHTML = `✅ Audio procesado (${ops.length} ${ops.length === 1 ? 'acción detectada' : 'acciones detectadas'})`;
+      if (dropHint) dropHint.innerHTML = `✅ Audio procesado (${ops.length} ${ops.length === 1 ? 'operación' : 'operaciones'})`;
     } catch (err) {
       console.error('Error Gemini Audio:', err);
-      if (dropHint) dropHint.innerHTML = `❌ Error IA: ${err.message}`;
+      if (dropHint) dropHint.innerHTML = `❌ Error IA: ${escapeAttr(err.message)}`;
       showToast(`Error IA: ${err.message}`);
     }
   };
@@ -1798,32 +2178,35 @@ function processWhatsAppAudioFile(file) {
 }
 
 function renderBatchReview(ops) {
+  dismissQuickSinglePreview();
   pendingBatchOps = ops.map(op => {
     let total = Number(op.montoManual ?? op.totalCalculado) || 0;
     const resolvedItems = Array.isArray(op.resolvedItems) ? [...op.resolvedItems] : [];
     if (!resolvedItems.length && op.items && op.items.length) {
-      total = 0;
       op.items.forEach(it => {
         const prod = db.inv.find(p => p.codigo === it.codigo);
         if (prod) {
           const qty = Number(it.qty) || 1;
           const precio = Number(prod.venta) || 0;
-          total += qty * precio;
           resolvedItems.push({ codigo: prod.codigo, producto: prod.producto, qty, precio });
         }
       });
+      if (!total) {
+        total = resolvedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
+      }
     }
     const normTipo = normalizeOpType(op.tipo);
     const rawCli = (op.cliente || '').trim();
     const finalCli = isAnonymousClientName(rawCli)
       ? CONSUMIDOR_FINAL_COMPOSITE
       : rawCli;
+    const zona = op.zona ? normalizeZoneName(op.zona) : resolveOperationZona({ ...op, cliente: finalCli });
 
     return {
       ...op,
       tipo: normTipo,
       cliente: finalCli,
-      zona: op.zona || '',
+      zona,
       sena: Number(op.sena) || 0,
       fechaProgramada: op.fechaProgramada || todayISO(),
       subtipoTarea: op.subtipoTarea || 'AVISO PAGO',
@@ -1837,7 +2220,7 @@ function renderBatchReview(ops) {
   box.innerHTML = `
     <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.45); border-radius:14px; padding:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <strong style="color:#6ee7b7; font-size:13px;">📋 ${pendingBatchOps.length} Acciones Detectadas (se guardarán en Historial)</strong>
+        <strong style="color:#6ee7b7; font-size:13px;">📋 Modo Lote: ${pendingBatchOps.length} operaciones independientes</strong>
         <button type="button" class="btn-icon" onclick="closeBatchReview()" title="Cancelar lote">✕</button>
       </div>
       <div style="display:flex; flex-direction:column; gap:8px; max-height:420px; overflow-y:auto; padding-right:2px;">
@@ -1849,25 +2232,33 @@ function renderBatchReview(ops) {
             : (op.notas || 'Movimiento directo');
           return `
             <div style="background:rgba(8,12,24,0.88); border:1px solid rgba(59,130,246,0.28); border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:8px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
                 <select onchange="pendingBatchOps[${idx}].tipo = this.value; renderBatchReview(pendingBatchOps);" style="padding:5px 8px; font-size:11.5px; font-weight:700; width:auto;">
                   <option value="VENTA A CREDITO" ${op.tipo === 'VENTA A CREDITO' ? 'selected' : ''}>📝 VENTA A CRÉDITO</option>
                   <option value="VENTA CONTADO" ${op.tipo === 'VENTA CONTADO' ? 'selected' : ''}>✅ VENTA DE CONTADO</option>
                   <option value="ABONO / PAGO" ${op.tipo === 'ABONO / PAGO' ? 'selected' : ''}>💵 ABONO / PAGO</option>
                   <option value="PEDIDO" ${op.tipo === 'PEDIDO' ? 'selected' : ''}>📦 PEDIDO</option>
-                  <option value="TAREA" ${op.tipo === 'TAREA' ? 'selected' : ''}>📅 TAREA / AVISO</option>
+                  <option value="TAREA" ${op.tipo === 'TAREA' ? 'selected' : ''}>📌 TAREA</option>
                 </select>
-                ${isOrder ? `<span style="font-size:11px; color:#fcd34d;">Seña: $<input type="number" value="${op.sena || 0}" onchange="pendingBatchOps[${idx}].sena = Number(this.value)" style="width:76px; padding:3px 6px; font-size:11px; display:inline-block;" /></span>` : ''}
-                <button type="button" class="btn-icon btn-icon-del" onclick="removeBatchItem(${idx})" style="font-size:15px;" title="Quitar">🗑</button>
+                ${!isTask && !isOrder ? `
+                  <select onchange="pendingBatchOps[${idx}].medio = this.value;" style="padding:5px 8px; font-size:11px; width:auto;">
+                    <option value="EFECTIVO" ${op.medio === 'EFECTIVO' ? 'selected' : ''}>Efectivo</option>
+                    <option value="TRANSFERENCIA" ${op.medio === 'TRANSFERENCIA' ? 'selected' : ''}>Transferencia</option>
+                    <option value="CUENTA CORRIENTE" ${op.medio === 'CUENTA CORRIENTE' ? 'selected' : ''}>Cta. Cte.</option>
+                  </select>
+                ` : ''}
+                ${isOrder ? `<span style="font-size:11px; color:#fcd34d;">Seña: $<input type="number" value="${op.sena || 0}" onchange="pendingBatchOps[${idx}].sena = Number(this.value)" style="width:70px; padding:3px 6px; font-size:11px; display:inline-block;" /></span>` : ''}
+                ${op.zona && op.zona !== 'MOSTRADOR / SIN ZONA' && op.zona !== 'SIN ZONA' ? `<span class="kpi-badge badge-purple">📍 ${escapeAttr(op.zona)}</span>` : ''}
+                <button type="button" class="btn-icon btn-icon-del" onclick="removeBatchItem(${idx})" style="font-size:14px; margin-left:auto;" title="Quitar">🗑</button>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <input type="text" list="clientes-datalist" value="${escapeAttr(op.cliente)}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="Opcional en contado (Mostrador / Varios)" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
+                <input type="text" list="clientes-datalist" value="${escapeAttr(op.cliente)}" onchange="pendingBatchOps[${idx}].cliente = this.value" placeholder="Cliente (Mostrador / Varios)" style="padding:6px 9px; font-size:12.5px; font-weight:700; flex:1;" />
                 ${isTask
                   ? `<input type="date" value="${escapeAttr(op.fechaProgramada)}" onchange="pendingBatchOps[${idx}].fechaProgramada = this.value" style="width:130px; padding:6px 8px; font-size:12px;" />`
-                  : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:110px; padding:6px 8px; text-align:right; font-weight:700;" />`
+                  : `<input type="number" value="${op.totalCalculado}" onchange="pendingBatchOps[${idx}].totalCalculado = Number(this.value)" style="width:105px; padding:6px 8px; text-align:right; font-weight:700;" />`
                 }
               </div>
-              <input type="text" value="${escapeAttr(itemsDesc)}" onchange="pendingBatchOps[${idx}].notas = this.value" style="padding:5px 8px; font-size:11.5px;" />
+              <input type="text" value="${escapeAttr(itemsDesc)}" onchange="pendingBatchOps[${idx}].notas = this.value; pendingBatchOps[${idx}].resolvedItems = [];" style="padding:5px 8px; font-size:11.5px;" />
             </div>
           `;
         }).join('')}
@@ -1876,7 +2267,7 @@ function renderBatchReview(ops) {
     </div>
   `;
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  showToast(`⚡ ${pendingBatchOps.length} acciones listas para confirmar`);
+  showToast(`📋 Modo Lote: ${pendingBatchOps.length} operaciones listas`);
 }
 
 function removeBatchItem(idx) {
@@ -1902,7 +2293,7 @@ function ensureClientExists(barberiaStr, barberoStr, zonaStr = '') {
   );
 
   if (!exists) {
-    const inferredZone = (zonaStr || (b1.includes('CELINA') ? 'VILLA CELINA' : '')).toUpperCase();
+    const inferredZone = normalizeZoneName(zonaStr || (b1.includes('CELINA') ? 'VILLA CELINA' : ''));
     db.clients.unshift({
       id: 'CLI-' + (Date.now() + Math.floor(Math.random() * 9999)),
       barberia: b1,
@@ -1943,14 +2334,17 @@ async function saveAllBatchOperations() {
     }
 
     ensureClientExists(barberia, barbero, op.zona);
+    const resolvedZona = normalizeZoneName(op.zona || resolveOperationZona({ barberia, barbero, cliente: rawCli }));
 
     if (normOpTipo === 'TAREA') {
       db.tasks.unshift({
         id: 'TSK-' + (Date.now() + index),
         fecha: op.fechaProgramada || fecha,
-        tipo: op.subtipoTarea || 'AVISO PAGO',
+        tipo: op.subtipoTarea || 'GENERAL',
         cliente: isAnonymousClientName(rawCli) ? '' : rawCli.toUpperCase(),
-        titulo: op.notas || 'Tarea programada por IA',
+        titulo: op.notas || 'Tarea programada',
+        desc: '',
+        images: [],
         done: false
       });
     } else if (normOpTipo === 'PEDIDO') {
@@ -1959,12 +2353,14 @@ async function saveAllBatchOperations() {
         id: 'ORD-' + (Date.now() + index),
         fecha,
         cliente: barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase(),
+        zona: resolvedZona,
         ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
         items: op.resolvedItems,
         detalleManual: op.resolvedItems.length ? '' : (op.notas || 'Pedido por lote'),
         totalEstimado: op.totalCalculado,
         sena: Number(op.sena) || 0,
         estado: 'PENDIENTE',
+        stockDeducted: false,
         notas: op.notas || ''
       });
     } else {
@@ -1984,6 +2380,7 @@ async function saveAllBatchOperations() {
         fecha,
         barberia: barberia.toUpperCase(),
         barbero: barbero.toUpperCase(),
+        zona: resolvedZona,
         tipo: normOpTipo,
         detalle: detalleText,
         medio: op.medio || 'EFECTIVO',
@@ -1998,9 +2395,10 @@ async function saveAllBatchOperations() {
           fecha,
           barberia: barberia.toUpperCase(),
           barbero: barbero.toUpperCase(),
+          zona: resolvedZona,
           tipo: 'ABONO / PAGO',
-          detalle: 'Entrega a cuenta en el momento de la venta a crédito',
-          medio: op.medio || 'EFECTIVO',
+          detalle: 'Entrega a cuenta',
+          medio: op.medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : (op.medio || 'EFECTIVO'),
           monto: Number(op.abonoParcial),
           obs: ''
         });
@@ -2012,10 +2410,10 @@ async function saveAllBatchOperations() {
   closeBatchReview();
   document.getElementById('voice-input').value = '';
   const dropHint = document.getElementById('drop-hint-text');
-  if (dropHint) dropHint.innerHTML = '💡 Pegá el listado de papá (incluso sin nombres de clientes) o arrastrá un audio de WhatsApp:';
+  if (dropHint) dropHint.innerHTML = '1 cliente = carga instantánea · Varios = lista editable';
 
   await persistData();
-  showToast(`✅ ¡${count} acciones guardadas al instante!`);
+  showToast(`✅ ¡${count} operaciones guardadas!`);
 }
 
 function applyParsedCommandToForm(parsed) {
@@ -2045,6 +2443,9 @@ function applyParsedCommandToForm(parsed) {
       if (prod) currentCart.push({ codigo: prod.codigo, producto: prod.producto, qty: Number(it.qty) || 1, precio: Number(prod.venta) || 0 });
     });
     renderCart();
+    if (parsed.montoManual > 0) {
+      document.getElementById('mov-monto').value = parsed.montoManual;
+    }
   } else if (parsed.montoManual) {
     document.getElementById('mov-monto').value = parsed.montoManual;
     if (parsed.notas) document.getElementById('mov-detalle').value = parsed.notas;
@@ -2058,11 +2459,9 @@ function applyParsedCommandToForm(parsed) {
       : (parsed.notas || document.getElementById('voice-input').value);
     document.getElementById('detected-order-summary').textContent = `${parsed.cliente || 'Cliente'}: ${summaryItems}`;
     banner.style.display = 'flex';
-    showToast('📦 Pedido detectado. Guardalo para sumarlo al Historial y Pedidos.');
   } else {
     lastDetectedOrder = null;
     banner.style.display = 'none';
-    showToast('¡Listo! Revisá los datos y tocá Guardar Operación.');
   }
 }
 
@@ -2075,16 +2474,19 @@ async function saveDetectedOrder() {
     id: 'ORD-' + Date.now(),
     fecha: document.getElementById('mov-fecha').value || todayISO(),
     cliente: rawCli.toUpperCase(),
+    zona: normalizeZoneName(lastDetectedOrder.zona || (matched ? matched.zona : '')),
     ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
     items: [...currentCart],
     detalleManual: currentCart.length ? '' : (document.getElementById('mov-detalle').value.trim() || document.getElementById('voice-input').value.trim()),
     totalEstimado: Number(document.getElementById('mov-monto').value) || 0,
     sena: Number(lastDetectedOrder.sena) || 0,
     estado: 'PENDIENTE',
+    stockDeducted: false,
     notas: document.getElementById('mov-obs').value.trim()
   });
 
   document.getElementById('detected-order-banner').style.display = 'none';
+  dismissQuickSinglePreview();
   lastDetectedOrder = null;
   currentCart = [];
   renderCart();
@@ -2093,13 +2495,13 @@ async function saveDetectedOrder() {
   document.getElementById('mov-detalle').value = '';
   document.getElementById('mov-obs').value = '';
   await persistData();
-  showToast('📦 Pedido guardado en Historial y bandeja de Pedidos');
+  showToast('📦 Pedido guardado');
 }
 
-/* --- DICTADO POR VOZ E INTERPRETACIÓN INTELIGENTE DE TEXTO / RESÚMENES --- */
+/* --- DICTADO POR VOZ E INTERPRETACIÓN INTELIGENTE DE 2 MODOS --- */
 function startDictation() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) return showToast('Tu navegador no soporta dictado directo; usá el micrófono del teclado o subí el audio de WhatsApp.');
+  if (!SpeechRecognition) return showToast('Tu navegador no soporta dictado; usá el micrófono del teclado o subí el audio');
 
   const btn = document.getElementById('btn-mic');
   const rec = new SpeechRecognition();
@@ -2117,26 +2519,38 @@ function startDictation() {
 
 async function parseSmartCommand() {
   const text = document.getElementById('voice-input').value.trim();
-  if (!text) return showToast('Escribí, pegá un listado o subí primero un audio');
+  if (!text) return showToast('Escribí, pegá una lista o subí un audio');
 
   const dropHint = document.getElementById('drop-hint-text');
-
   const instantLocalOps = parseStructuredSummaryLocally(text);
-  if (instantLocalOps.length >= 1 && (instantLocalOps.length >= 2 || text.includes('\n') || /^[-•*]/.test(text))) {
-    document.getElementById('detected-order-banner').style.display = 'none';
-    renderBatchReview(instantLocalOps);
-    if (dropHint) dropHint.innerHTML = `⚡ ${instantLocalOps.length} ${instantLocalOps.length === 1 ? 'operación desglosada' : 'operaciones desglosadas'} al instante:`;
+
+  // MODO RÁPIDO (1 solo cliente, 1 operación no-tarea) -> Carga instantánea + vista previa de 1 clic
+  if (instantLocalOps.length === 1 && instantLocalOps[0].tipo !== 'TAREA') {
+    closeBatchReview();
+    applyParsedCommandToForm(instantLocalOps[0]);
+    showQuickSinglePreview(instantLocalOps[0]);
+    if (dropHint) dropHint.innerHTML = '⚡ Modo Rápido: 1 operación lista para confirmar';
+    showToast('⚡ Modo Rápido: operación cargada');
     return;
   }
 
+  // MODO LOTE (2+ operaciones o tareas) -> Lista editable aislada por cliente
+  if (instantLocalOps.length >= 2 || (instantLocalOps.length === 1 && instantLocalOps[0].tipo === 'TAREA')) {
+    document.getElementById('detected-order-banner').style.display = 'none';
+    renderBatchReview(instantLocalOps);
+    if (dropHint) dropHint.innerHTML = `📋 Modo Lote: ${instantLocalOps.length} acciones detectadas`;
+    return;
+  }
+
+  // Respaldo con Gemini si el texto no sigue formato estructurado
   if (config.geminiKey) {
     const aiBtn = document.querySelector('button[onclick="parseSmartCommand()"]');
-    const originalBtnText = aiBtn ? aiBtn.innerHTML : '✨ Interpretar Listado / Audio';
+    const originalBtnText = aiBtn ? aiBtn.innerHTML : '✨ Interpretar';
     if (aiBtn) {
       aiBtn.disabled = true;
       aiBtn.innerHTML = '⏳ Analizando...';
     }
-    if (dropHint) dropHint.innerHTML = '⏳ Interpretando mensaje con Gemini...';
+    if (dropHint) dropHint.innerHTML = '⏳ Interpretando con IA...';
 
     try {
       const prompt = buildSmartExtractionPrompt(text);
@@ -2146,15 +2560,16 @@ async function parseSmartCommand() {
       if (ops.length === 1 && ops[0].tipo !== 'TAREA') {
         closeBatchReview();
         applyParsedCommandToForm(ops[0] || {});
+        showQuickSinglePreview(ops[0] || {});
       } else if (ops.length > 0) {
         document.getElementById('detected-order-banner').style.display = 'none';
         renderBatchReview(ops);
       }
-      if (dropHint) dropHint.innerHTML = `✅ ${ops.length} acciones listas para confirmar abajo:`;
+      if (dropHint) dropHint.innerHTML = `✅ ${ops.length} acciones listas`;
     } catch (err) {
       console.error('Error Gemini Texto:', err);
-      if (dropHint) dropHint.innerHTML = `❌ Error Gemini: ${err.message}`;
-      showToast(`Error Gemini: ${err.message}`);
+      if (dropHint) dropHint.innerHTML = `❌ Error IA: ${escapeAttr(err.message)}`;
+      showToast(`Error IA: ${err.message}`);
     } finally {
       if (aiBtn) {
         aiBtn.disabled = false;
@@ -2162,8 +2577,7 @@ async function parseSmartCommand() {
       }
     }
   } else {
-    showToast('Falta tu Gemini API Key en Nube & IA');
-    switchTab('nube');
+    showToast('Formato no reconocido. Probá: "Lucas (Liniers): 2 capas $10000 contado"');
   }
 }
 
@@ -2197,6 +2611,7 @@ async function saveMovement(e) {
     }
 
     ensureClientExists(barberia, barbero);
+    const resolvedZona = resolveOperationZona({ barberia, barbero, cliente: rawCli });
 
     const monto = Number(document.getElementById('mov-monto').value) || 0;
     const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
@@ -2209,12 +2624,14 @@ async function saveMovement(e) {
         id: 'ORD-' + Date.now(),
         fecha,
         cliente: barbero ? `${barberia.toUpperCase()} | ${barbero.toUpperCase()}` : barberia.toUpperCase(),
+        zona: resolvedZona,
         ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
         items: [...currentCart],
         detalleManual: currentCart.length ? '' : document.getElementById('mov-detalle').value.trim(),
         totalEstimado: monto,
         sena: 0,
         estado: 'PENDIENTE',
+        stockDeducted: false,
         notas: document.getElementById('mov-obs').value.trim()
       });
 
@@ -2224,8 +2641,9 @@ async function saveMovement(e) {
       document.getElementById('mov-detalle').value = '';
       document.getElementById('mov-obs').value = '';
       document.getElementById('voice-input').value = '';
+      dismissQuickSinglePreview();
       await persistData();
-      showToast('📦 Pedido guardado al instante');
+      showToast('📦 Pedido guardado');
       return;
     }
 
@@ -2241,6 +2659,7 @@ async function saveMovement(e) {
       fecha,
       barberia: barberia.toUpperCase(),
       barbero: barbero.toUpperCase(),
+      zona: resolvedZona,
       tipo,
       detalle: document.getElementById('mov-detalle').value.trim() || getOpTypeLabel(tipo),
       medio,
@@ -2255,9 +2674,10 @@ async function saveMovement(e) {
         fecha,
         barberia: barberia.toUpperCase(),
         barbero: barbero.toUpperCase(),
+        zona: resolvedZona,
         tipo: 'ABONO / PAGO',
-        detalle: 'Entrega a cuenta en el momento de la venta a crédito',
-        medio,
+        detalle: 'Entrega a cuenta',
+        medio: medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : medio,
         monto: abonoParcial,
         obs: ''
       });
@@ -2270,11 +2690,12 @@ async function saveMovement(e) {
     document.getElementById('mov-detalle').value = '';
     document.getElementById('mov-obs').value = '';
     document.getElementById('voice-input').value = '';
+    dismissQuickSinglePreview();
     if (tipo === 'VENTA CONTADO' && isAnonymousClientName(rawCli)) {
       document.getElementById('mov-cliente-search').value = '';
     }
     await persistData();
-    showToast('✅ Movimiento guardado al instante');
+    showToast('✅ Operación guardada');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -2297,6 +2718,42 @@ function deleteMovement(id) {
   showToast('Movimiento eliminado y stock restaurado');
 }
 
+function setReportZoneFilter(zone) {
+  const cleanZone = zone || 'TODAS';
+  activeReportZone = (activeReportZone === cleanZone && cleanZone !== 'TODAS') ? 'TODAS' : cleanZone;
+  const sel = document.getElementById('report-zone-filter');
+  if (sel) sel.value = activeReportZone;
+  renderMovements();
+}
+
+function populateReportZoneDropdown() {
+  const sel = document.getElementById('report-zone-filter');
+  if (!sel) return;
+  const zonesSet = new Set();
+
+  (db.clients || []).forEach(c => {
+    const z = normalizeZoneName(c.zona || '');
+    if (z) zonesSet.add(z);
+  });
+  (db.movs || []).forEach(m => {
+    const z = resolveOperationZona(m);
+    if (z) zonesSet.add(z);
+  });
+  (db.orders || []).forEach(o => {
+    const z = resolveOperationZona(o);
+    if (z) zonesSet.add(z);
+  });
+
+  const sortedZones = Array.from(zonesSet).sort((a, b) => a.localeCompare(b));
+  if (activeReportZone !== 'TODAS' && !zonesSet.has(activeReportZone)) {
+    zonesSet.add(activeReportZone);
+  }
+
+  sel.innerHTML = `<option value="TODAS">Todas las zonas</option>` +
+    sortedZones.map(z => `<option value="${escapeAttr(z)}">${escapeAttr(z)}</option>`).join('');
+  sel.value = activeReportZone;
+}
+
 function renderMovements() {
   const startInput = document.getElementById('report-start-date');
   const endInput = document.getElementById('report-end-date');
@@ -2309,31 +2766,56 @@ function renderMovements() {
     endDate = tmp;
   }
 
-  let rangeContado = 0, rangeContadoCount = 0;
-  let rangeCredito = 0, rangeCreditoCount = 0;
-  let rangePedido = 0, rangePedidoCount = 0;
-  let rangeCobrado = 0;
-
-  (db.movs || []).forEach(m => {
-    if (m.fecha >= startDate && m.fecha <= endDate) {
-      const monto = Number(m.monto) || 0;
-      const normTipo = normalizeOpType(m.tipo);
-      if (normTipo === 'VENTA CONTADO') { rangeContado += monto; rangeContadoCount++; }
-      if (normTipo === 'VENTA A CREDITO') { rangeCredito += monto; rangeCreditoCount++; }
-      if (normTipo === 'ABONO / PAGO') { rangeCobrado += monto; }
-    }
-  });
-
-  (db.orders || []).forEach(o => {
-    if (o.fecha >= startDate && o.fecha <= endDate) {
-      rangePedido += Number(o.totalEstimado) || 0;
-      rangePedidoCount++;
-    }
-  });
+  populateReportZoneDropdown();
+  const selZoneEl = document.getElementById('report-zone-filter');
+  activeReportZone = selZoneEl ? (selZoneEl.value || 'TODAS') : 'TODAS';
 
   const incContado = document.getElementById('chk-sum-contado')?.checked ?? true;
   const incCredito = document.getElementById('chk-sum-credito')?.checked ?? true;
   const incPedido = document.getElementById('chk-sum-pedido')?.checked ?? true;
+
+  let rangeContado = 0, rangeContadoCount = 0;
+  let rangeCredito = 0, rangeCreditoCount = 0;
+  let rangePedido = 0, rangePedidoCount = 0;
+  let rangeCobrado = 0;
+  const zoneSalesMap = {};
+
+  (db.movs || []).forEach(m => {
+    if (m.fecha < startDate || m.fecha > endDate) return;
+    const monto = Number(m.monto) || 0;
+    const normTipo = normalizeOpType(m.tipo);
+    const zona = resolveOperationZona(m);
+
+    const includeInZoneChart = (normTipo === 'VENTA CONTADO' && incContado) || (normTipo === 'VENTA A CREDITO' && incCredito);
+    if (includeInZoneChart && monto > 0) {
+      if (!zoneSalesMap[zona]) zoneSalesMap[zona] = { total: 0, count: 0 };
+      zoneSalesMap[zona].total += monto;
+      zoneSalesMap[zona].count += 1;
+    }
+
+    if (activeReportZone !== 'TODAS' && zona !== activeReportZone) return;
+
+    if (normTipo === 'VENTA CONTADO') { rangeContado += monto; rangeContadoCount++; }
+    if (normTipo === 'VENTA A CREDITO') { rangeCredito += monto; rangeCreditoCount++; }
+    if (normTipo === 'ABONO / PAGO') { rangeCobrado += monto; }
+  });
+
+  (db.orders || []).forEach(o => {
+    if (o.fecha < startDate || o.fecha > endDate) return;
+    const monto = Number(o.totalEstimado) || 0;
+    const zona = resolveOperationZona(o);
+
+    if (incPedido && monto > 0) {
+      if (!zoneSalesMap[zona]) zoneSalesMap[zona] = { total: 0, count: 0 };
+      zoneSalesMap[zona].total += monto;
+      zoneSalesMap[zona].count += 1;
+    }
+
+    if (activeReportZone !== 'TODAS' && zona !== activeReportZone) return;
+
+    rangePedido += monto;
+    rangePedidoCount++;
+  });
 
   let totalSeleccionado = 0;
   let countSeleccionado = 0;
@@ -2352,13 +2834,14 @@ function renderMovements() {
   if (incPedido) {
     totalSeleccionado += rangePedido;
     countSeleccionado += rangePedidoCount;
-    activeLabels.push('A Pedido');
+    activeLabels.push('Pedidos');
   }
 
   if (document.getElementById('report-total-seleccionado')) {
     document.getElementById('report-total-seleccionado').textContent = fmtMoney(totalSeleccionado);
-    document.getElementById('report-selected-tags').textContent = activeLabels.length ? activeLabels.join(' + ') : 'Ninguno seleccionado';
-    document.getElementById('report-total-count').innerHTML = `${countSeleccionado} ${countSeleccionado === 1 ? 'operación incluida' : 'operaciones incluidas'} · Cobrado abonos: <b class="text-green">${fmtMoney(rangeCobrado)}</b>`;
+    const zoneTag = activeReportZone !== 'TODAS' ? ` · ${activeReportZone}` : '';
+    document.getElementById('report-selected-tags').textContent = (activeLabels.length ? activeLabels.join(' + ') : 'Ninguno') + zoneTag;
+    document.getElementById('report-total-count').innerHTML = `${countSeleccionado} ops · Cobrado: <b class="text-green">${fmtMoney(rangeCobrado)}</b>`;
 
     document.getElementById('report-contado-monto').textContent = fmtMoney(rangeContado);
     document.getElementById('report-contado-count').textContent = `${rangeContadoCount} ${rangeContadoCount === 1 ? 'venta' : 'ventas'}`;
@@ -2369,13 +2852,30 @@ function renderMovements() {
     document.getElementById('report-pedido-monto').textContent = fmtMoney(rangePedido);
     document.getElementById('report-pedido-count').textContent = `${rangePedidoCount} ${rangePedidoCount === 1 ? 'pedido' : 'pedidos'}`;
 
-    document.getElementById('report-range-label').textContent = startDate === endDate
-      ? `Día: ${startDate}`
-      : `Período: ${startDate} al ${endDate}`;
+    document.getElementById('report-range-label').textContent = startDate === endDate ? startDate : `${startDate} → ${endDate}`;
 
     document.getElementById('card-chk-contado')?.classList.toggle('report-card-off', !incContado);
     document.getElementById('card-chk-credito')?.classList.toggle('report-card-off', !incCredito);
     document.getElementById('card-chk-pedido')?.classList.toggle('report-card-off', !incPedido);
+  }
+
+  const zoneListEl = document.getElementById('sales-by-zone-list');
+  if (zoneListEl) {
+    const zoneEntries = Object.entries(zoneSalesMap).sort((a, b) => b[1].total - a[1].total);
+    const maxZone = Math.max(...zoneEntries.map(([, v]) => v.total), 1);
+    zoneListEl.innerHTML = zoneEntries.length ? zoneEntries.map(([zona, stat]) => {
+      const isActive = activeReportZone === zona;
+      const pct = Math.max(4, Math.round((stat.total / maxZone) * 100));
+      return `
+        <div class="bar-row zone-bar-row ${isActive ? 'is-active' : ''}" onclick="setReportZoneFilter('${zona.replace(/'/g, "\\'")}')">
+          <div class="bar-labels">
+            <span><strong>${escapeAttr(zona)}</strong> <span class="muted">(${stat.count})</span></span>
+            <span class="font-bold">${fmtMoney(stat.total)}</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        </div>
+      `;
+    }).join('') : '<p class="muted" style="font-size:12px;">Sin ventas registradas en este período.</p>';
   }
 
   const tbody = document.getElementById('all-movs-body');
@@ -2387,6 +2887,7 @@ function renderMovements() {
 
   const unifiedList = getUnifiedOperationsList().filter(item => {
     if (onlySelectedRange && (item.fecha < startDate || item.fecha > endDate)) return false;
+    if (activeReportZone !== 'TODAS' && item.zona !== activeReportZone) return false;
 
     const normTipo = normalizeOpType(item.tipo);
     if (typeFilter === 'VENTAS' && normTipo !== 'VENTA A CREDITO' && normTipo !== 'VENTA CONTADO') return false;
@@ -2396,7 +2897,7 @@ function renderMovements() {
     if (typeFilter === 'ABONO / PAGO' && normTipo !== 'ABONO / PAGO') return false;
 
     if (q) {
-      const hay = `${item.barberia} ${item.barbero} ${item.detalle} ${getOpTypeLabel(item.tipo)} ${item.fecha}`.toLowerCase();
+      const hay = `${item.barberia} ${item.barbero} ${item.zona || ''} ${item.detalle} ${getOpTypeLabel(item.tipo)} ${item.fecha}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -2416,14 +2917,14 @@ function renderMovements() {
       <tr>
         <td>${m.fecha}</td>
         <td>
-          <div class="font-bold">${m.barberia}${m.barbero ? ' · ' + m.barbero : ''}</div>
-          <div class="muted" style="font-size:11.5px;">${m.detalle || ''}</div>
+          <div class="font-bold">${escapeAttr(m.barberia)}${m.barbero ? ' · ' + escapeAttr(m.barbero) : ''}</div>
+          <div class="muted" style="font-size:11.5px;">${m.zona && m.zona !== 'MOSTRADOR / SIN ZONA' && m.zona !== 'SIN ZONA' ? escapeAttr(m.zona) + ' · ' : ''}${escapeAttr(m.detalle || '')}</div>
         </td>
         <td><span class="kpi-badge ${badgeClass}">${badgeText}</span></td>
         <td class="text-right font-bold">${fmtMoney(m.monto)}</td>
         <td class="text-right" style="white-space:nowrap;">
           <div class="action-icon-group">
-            <button class="btn-icon" onclick="openEditOperationModal('${m.id}', ${m.isOrder})" title="Editar operación">✏️</button>
+            <button class="btn-icon" onclick="openEditOperationModal('${m.id}', ${m.isOrder})" title="Editar">✏️</button>
             <button class="btn-icon btn-icon-del" onclick="${delAction}" title="Eliminar">🗑</button>
           </div>
         </td>
@@ -2432,7 +2933,7 @@ function renderMovements() {
   }).join('') : `<tr><td colspan="5" class="text-center muted" style="padding:24px;">No hay operaciones registradas con este filtro.</td></tr>`;
 }
 
-/* --- BANDEJA DE PEDIDOS & ENCARGOS --- */
+/* --- BANDEJA DE PEDIDOS SIMPLIFICADOS (PENDIENTE -> PREPARADO -> ENTREGADO) --- */
 function setOrderFilter(status, btn) {
   activeOrderFilter = status;
   document.querySelectorAll('#order-status-filters .chip').forEach(c => c.classList.remove('active'));
@@ -2446,7 +2947,10 @@ function renderOrders() {
   if (!tbody) return;
 
   const orders = (db.orders || [])
-    .filter(o => activeOrderFilter === 'TODOS' || o.estado === activeOrderFilter)
+    .filter(o => {
+      const est = o.estado || 'PENDIENTE';
+      return activeOrderFilter === 'TODOS' || est === activeOrderFilter;
+    })
     .filter(o => {
       const itemsStr = (o.items || []).map(i => i.producto).join(' ').toLowerCase();
       return (o.cliente || '').toLowerCase().includes(q) ||
@@ -2459,40 +2963,45 @@ function renderOrders() {
     const desc = (o.items && o.items.length)
       ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
       : (o.detalleManual || o.notas || 'Pedido sin detalle');
-    const sena = Number(o.sena) || 0;
+    const est = o.estado || 'PENDIENTE';
     const total = Number(o.totalEstimado) || 0;
-    const resta = Math.max(0, total - sena);
-    const senaInfo = sena > 0
-      ? `<div class="text-green" style="font-size:11px;">Seña: ${fmtMoney(sena)} · Resta: <b>${fmtMoney(resta)}</b></div>`
-      : '';
+    const totalStr = total > 0 ? `<div class="muted" style="font-size:11px;">Est: ${fmtMoney(total)}</div>` : '';
 
-    const isPending = o.estado === 'PENDIENTE';
-    const actionBtns = isPending
-      ? `<div class="action-icon-group">
-           <button class="btn-sm btn-wa" onclick="deliverOrder('${o.id}', 'VENTA A CREDITO')" title="Entregar a Crédito (por el saldo restante)">A Crédito</button>
-           <button class="btn-sm btn-pay" onclick="deliverOrder('${o.id}', 'VENTA CONTADO')" title="Entregar de Contado (por el saldo restante)">Contado</button>
-           <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
-           <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
-         </div>`
-      : `<div class="action-icon-group">
-           <span class="kpi-badge badge-green">ENTREGADO</span>
-           <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
-           <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
-         </div>`;
+    let stateBadge = '<span class="kpi-badge badge-amber">⏳ Pendiente</span>';
+    if (est === 'PREPARADO') stateBadge = '<span class="kpi-badge badge-purple">📦 Comprado / Preparado</span>';
+    else if (est === 'ENTREGADO') stateBadge = '<span class="kpi-badge badge-green">✓ Entregado</span>';
+
+    let actionBtns = '';
+    if (est === 'PENDIENTE') {
+      actionBtns = `
+        <button class="btn-sm btn-prep" onclick="setOrderStatus('${o.id}', 'PREPARADO')" title="Marcar Comprado / Preparado">✓ Preparado</button>
+        <button class="btn-sm btn-deliver" onclick="setOrderStatus('${o.id}', 'ENTREGADO')" title="Marcar Entregado y descontar stock">🚚 Entregar</button>
+      `;
+    } else if (est === 'PREPARADO') {
+      actionBtns = `
+        <button class="btn-sm btn-deliver" onclick="setOrderStatus('${o.id}', 'ENTREGADO')" title="Marcar Entregado y descontar stock">🚚 Entregar</button>
+      `;
+    }
 
     return `
       <tr>
-        <td><div class="font-bold">${o.fecha}</div><div class="muted" style="font-size:11px;">${o.ruta || 'A DEFINIR'}</div></td>
-        <td><div class="font-bold">${o.cliente}</div>${o.notas ? `<div class="muted" style="font-size:11px;">📝 ${o.notas}</div>` : ''}</td>
-        <td><div>${desc}</div>${senaInfo}</td>
-        <td class="text-right font-bold">${fmtMoney(total)}</td>
-        <td class="text-right" style="white-space:nowrap;">${actionBtns}</td>
+        <td><div class="font-bold">${o.fecha}</div><div class="muted" style="font-size:11px;">${escapeAttr(o.ruta || 'A DEFINIR')}</div></td>
+        <td><div class="font-bold">${escapeAttr(o.cliente)}</div>${o.notas ? `<div class="muted" style="font-size:11px;">${escapeAttr(o.notas)}</div>` : ''}</td>
+        <td><div>${escapeAttr(desc)}</div>${totalStr}</td>
+        <td>${stateBadge}</td>
+        <td class="text-right" style="white-space:nowrap;">
+          <div class="action-icon-group">
+            ${actionBtns}
+            <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
+            <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
+          </div>
+        </td>
       </tr>
     `;
-  }).join('') : `<tr><td colspan="5" class="text-center muted" style="padding:24px;">No hay pedidos en esta vista.</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="text-center muted" style="padding:24px;">No hay pedidos en este estado.</td></tr>`;
 
   const picking = {};
-  (db.orders || []).filter(o => o.estado === 'PENDIENTE').forEach(o => {
+  (db.orders || []).filter(o => (o.estado || 'PENDIENTE') === 'PENDIENTE').forEach(o => {
     if (o.items && o.items.length) {
       o.items.forEach(it => {
         picking[it.producto] = (picking[it.producto] || 0) + Number(it.qty);
@@ -2507,10 +3016,10 @@ function renderOrders() {
     const entries = Object.entries(picking);
     pickingEl.innerHTML = entries.length ? entries.map(([prod, qty]) => `
       <div class="activity-item">
-        <span class="font-bold" style="font-size:13px;">${prod}</span>
+        <span class="font-bold" style="font-size:13px;">${escapeAttr(prod)}</span>
         <span class="kpi-badge badge-amber">${qty} u.</span>
       </div>
-    `).join('') : '<p class="muted">No hay artículos pendientes para preparar.</p>';
+    `).join('') : '<p class="muted">Sin artículos pendientes para preparar.</p>';
   }
 }
 
@@ -2521,17 +3030,20 @@ async function saveQuickOrder(e) {
   const total = Number(document.getElementById('quick-order-total').value) || 0;
   const nota = document.getElementById('quick-order-nota').value.trim();
   const matched = findClientByComposite(rawCli);
+  const matchedItems = matchInventoryItemsFromLine(detail);
 
   db.orders.unshift({
     id: 'ORD-' + Date.now(),
     fecha: todayISO(),
     cliente: rawCli.toUpperCase(),
+    zona: matched ? normalizeZoneName(matched.zona || '') : '',
     ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
-    items: [],
-    detalleManual: detail,
+    items: matchedItems,
+    detalleManual: matchedItems.length ? '' : detail,
     totalEstimado: total,
     sena: 0,
     estado: 'PENDIENTE',
+    stockDeducted: false,
     notas: nota
   });
 
@@ -2540,59 +3052,51 @@ async function saveQuickOrder(e) {
   document.getElementById('quick-order-total').value = 0;
   document.getElementById('quick-order-nota').value = '';
   await persistData();
-  showToast('📦 Pedido anotado y agregado al Historial');
+  showToast('📦 Pedido guardado');
 }
 
-async function deliverOrder(orderId, tipoVenta) {
-  const ord = db.orders.find(o => o.id === orderId);
+async function setOrderStatus(orderId, targetStatus) {
+  const ord = (db.orders || []).find(o => o.id === orderId);
   if (!ord) return;
-  const normVenta = normalizeOpType(tipoVenta);
-  const labelVenta = getOpTypeLabel(normVenta);
-  const sena = Number(ord.sena) || 0;
-  const saldoRestante = Math.max(0, (Number(ord.totalEstimado) || 0) - sena);
-  const confirmMsg = sena > 0
-    ? `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${labelVenta})?\nTotal: ${fmtMoney(ord.totalEstimado)} | Seña ya cobrada: ${fmtMoney(sena)} | Saldo a registrar ahora: ${fmtMoney(saldoRestante)}`
-    : `¿Marcar pedido de ${ord.cliente} como ENTREGADO (${labelVenta}) por ${fmtMoney(saldoRestante)}?`;
 
-  if (!confirm(confirmMsg)) return;
+  const prevStatus = ord.estado || 'PENDIENTE';
+  const alreadyDeducted = Boolean(ord.stockDeducted || prevStatus === 'ENTREGADO');
 
-  if (ord.items && ord.items.length) {
-    ord.items.forEach(item => {
-      const invItem = db.inv.find(x => x.codigo === item.codigo);
-      if (invItem) invItem.stock = Number(invItem.stock) - Number(item.qty);
-    });
+  if (targetStatus === 'ENTREGADO' && !alreadyDeducted) {
+    if (ord.items && ord.items.length) {
+      ord.items.forEach(item => {
+        const invItem = db.inv.find(x => x.codigo === item.codigo);
+        if (invItem) invItem.stock = Number(invItem.stock) - Number(item.qty);
+      });
+    }
+    ord.stockDeducted = true;
+  } else if (targetStatus !== 'ENTREGADO' && alreadyDeducted) {
+    if (ord.items && ord.items.length) {
+      ord.items.forEach(item => {
+        const invItem = db.inv.find(x => x.codigo === item.codigo);
+        if (invItem) invItem.stock = Number(invItem.stock) + Number(item.qty);
+      });
+    }
+    ord.stockDeducted = false;
   }
 
-  const parts = (ord.cliente || '').split('|');
-  const barberia = (parts[0] || '').trim().toUpperCase();
-  const barbero = (parts[1] || '').trim().toUpperCase();
-  const detalleBase = (ord.items && ord.items.length)
-    ? ord.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
-    : (ord.detalleManual || 'Pedido entregado');
-  const detalleText = sena > 0 ? `${detalleBase} (Saldo restante tras seña de ${fmtMoney(sena)})` : detalleBase;
-
-  if (saldoRestante > 0) {
-    db.movs.push({
-      id: 'MOV-' + Date.now(),
-      fecha: todayISO(),
-      barberia,
-      barbero,
-      tipo: normVenta,
-      detalle: detalleText,
-      medio: normVenta === 'VENTA A CREDITO' ? 'CUENTA CORRIENTE' : 'EFECTIVO',
-      monto: saldoRestante,
-      items: ord.items || [],
-      obs: ord.notas || 'Pedido entregado'
-    });
-  }
-
-  ord.estado = 'ENTREGADO';
+  ord.estado = targetStatus;
   await persistData();
-  showToast(`✅ Pedido entregado (${fmtMoney(saldoRestante)} registrados) y stock actualizado`);
+
+  if (targetStatus === 'PREPARADO') showToast('📦 Pedido marcado como Comprado / Preparado');
+  else if (targetStatus === 'ENTREGADO') showToast('✅ Pedido entregado y stock actualizado');
+  else showToast('Estado de pedido actualizado');
 }
 
 function deleteOrder(id) {
   if (!confirm('¿Eliminar este pedido?')) return;
+  const ord = (db.orders || []).find(o => o.id === id);
+  if (ord && (ord.stockDeducted || ord.estado === 'ENTREGADO') && ord.items && ord.items.length) {
+    ord.items.forEach(it => {
+      const invItem = db.inv.find(x => x.codigo === it.codigo);
+      if (invItem) invItem.stock = Number(invItem.stock) + Number(it.qty);
+    });
+  }
   db.orders = db.orders.filter(o => o.id !== id);
   persistData();
   showToast('Pedido eliminado');
@@ -2824,7 +3328,7 @@ function importBackup(e) {
 
 function resetToExcelDefault() {
   if (!confirm('¿Volver a los datos originales del Excel?')) return;
-  db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [], habits: JSON.parse(JSON.stringify(DEFAULT_HABITS)) };
+  db = { ...JSON.parse(JSON.stringify(INITIAL_DATA)), orders: [], tasks: [] };
   persistData();
   showToast('Datos originales restaurados');
 }

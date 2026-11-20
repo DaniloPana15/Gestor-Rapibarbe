@@ -57,10 +57,16 @@
 
       <!-- NAVEGACIÓN ESCRITORIO -->
       <nav class="nav-pills desktop-nav" role="tablist">
-        <button class="nav-pill active" data-tab="dashboard" onclick="switchTab('dashboard')">Inicio</button>
-        <button class="nav-pill" data-tab="agenda" onclick="switchTab('agenda')">Agenda (<span id="nav-tasks-count">0</span>)</button>
+        <button class="nav-pill active" data-tab="dashboard" onclick="switchTab('dashboard')">
+          Inicio <span class="nav-badge-red" id="badge-dashboard" style="display:none;">0</span>
+        </button>
+        <button class="nav-pill" data-tab="agenda" onclick="switchTab('agenda')">
+          Tareas <span class="nav-badge-red" id="badge-agenda" style="display:none;">0</span>
+        </button>
         <button class="nav-pill" data-tab="movimientos" onclick="switchTab('movimientos')">+ Operación</button>
-        <button class="nav-pill" data-tab="pedidos" onclick="switchTab('pedidos')">Pedidos (<span id="nav-orders-count">0</span>)</button>
+        <button class="nav-pill" data-tab="pedidos" onclick="switchTab('pedidos')">
+          Pedidos <span class="nav-badge-red" id="badge-pedidos" style="display:none;">0</span>
+        </button>
         <button class="nav-pill" data-tab="clientes" onclick="switchTab('clientes')">Clientes</button>
         <button class="nav-pill" data-tab="inventario" onclick="switchTab('inventario')">Stock</button>
         <button class="nav-pill" data-tab="nube" onclick="switchTab('nube')">Nube & IA</button>
@@ -79,10 +85,10 @@
     <!-- HERO BALANCE + BOTONES DE ACCIÓN RÁPIDA -->
     <section class="hero-balance-section">
       <div class="balance-main">
-        <span class="balance-label">Total en la Calle (Por Cobrar)</span>
+        <span class="balance-label">Por Cobrar</span>
         <div class="balance-amount" id="kpi-deuda">$0</div>
         <div class="balance-trend">
-          <span class="trend-pill" id="kpi-deudores-count">0 barberos con saldo activo</span>
+          <span class="trend-pill" id="kpi-deudores-count">0 activos</span>
           <span class="trend-sub" id="kpi-ventas-split">Contado: $0 · Crédito: $0</span>
         </div>
       </div>
@@ -103,18 +109,20 @@
           <span>Cobrar</span>
         </button>
 
-        <button class="qa-item" onclick="switchTab('agenda')">
+        <button class="qa-item qa-item-badged" onclick="switchTab('agenda')">
           <div class="qa-box qa-box-purple">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
+            <span class="qa-badge-red" id="qa-badge-agenda" style="display:none;">0</span>
           </div>
-          <span>Agenda (<b id="kpi-tareas-hoy">0</b>)</span>
+          <span>Tareas</span>
         </button>
 
-        <button class="qa-item" onclick="switchTab('pedidos')">
+        <button class="qa-item qa-item-badged" onclick="switchTab('pedidos')">
           <div class="qa-box qa-box-amber">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+            <span class="qa-badge-red" id="qa-badge-pedidos" style="display:none;">0</span>
           </div>
-          <span>Pedidos (<b id="kpi-pedidos-pendientes">0</b>)</span>
+          <span>Pedidos</span>
         </button>
       </div>
 
@@ -123,7 +131,7 @@
         <div class="mini-stat-card glass-card">
           <div class="mini-stat-icon icon-green">↓</div>
           <div class="mini-stat-info">
-            <div class="mini-stat-title">Cobrado (Abonos)</div>
+            <div class="mini-stat-title">Cobrado</div>
             <div class="mini-stat-val text-green" id="kpi-cobrado">$0</div>
           </div>
         </div>
@@ -143,8 +151,7 @@
         <div class="glass-card panel-box">
           <div class="panel-head">
             <div>
-              <h2>Hoja de Ruta & Cobranzas</h2>
-              <p class="muted">Filtrá por recorrido y enviá recordatorios por WhatsApp.</p>
+              <h2>Cobranzas por Ruta</h2>
             </div>
             <div class="route-filters" id="route-filters">
               <button class="chip active" onclick="setRouteFilter('TODOS', this)">Todos</button>
@@ -156,7 +163,7 @@
           </div>
 
           <div class="search-bar-inline">
-            <input type="text" id="dash-search" placeholder="🔍 Buscar barbería, barbero o zona en deuda..." oninput="renderDashboard()" />
+            <input type="text" id="dash-search" placeholder="🔍 Buscar barbería, barbero o zona..." oninput="renderDashboard()" />
           </div>
 
           <div class="table-wrap">
@@ -175,34 +182,24 @@
         </div>
 
         <div class="side-stack">
-          <!-- RESUMEN DE TAREAS DE HOY EN EL INICIO -->
           <div class="glass-card panel-box">
             <div class="panel-head">
-              <div>
-                <h3>📅 Pendientes de Hoy</h3>
-                <p class="muted">Avisos, grabaciones y rutinas del día</p>
-              </div>
-              <button class="btn-link" onclick="switchTab('agenda')">Abrir Agenda</button>
+              <h3>Tareas Pendientes</h3>
+              <button class="btn-link" onclick="switchTab('agenda')">Ver todas</button>
             </div>
             <div id="dash-today-tasks" class="activity-list"></div>
           </div>
 
           <div class="glass-card panel-box">
             <div class="panel-head">
-              <div>
-                <h3>Estadísticas por Ruta</h3>
-                <p class="muted">Distribución del saldo pendiente</p>
-              </div>
+              <h3>Saldo por Ruta</h3>
             </div>
             <div id="route-bars" class="bar-chart-container"></div>
           </div>
 
           <div class="glass-card panel-box">
             <div class="panel-head">
-              <div>
-                <h3>Últimos Movimientos</h3>
-                <p class="muted">Ventas, cobros y pedidos recientes</p>
-              </div>
+              <h3>Últimos Movimientos</h3>
               <button class="btn-link" onclick="switchTab('movimientos')">Ver todos</button>
             </div>
             <div id="recent-movs-list" class="activity-list"></div>
@@ -211,145 +208,119 @@
       </div>
     </main>
 
-    <!-- TAB NUEVA: AGENDA, AVISOS WHATSAPP & HABIT TRACKER -->
+    <!-- TAB 2: TAREAS / PENDIENTES CON FOTOS (SIN HABIT TRACKER) -->
     <main id="tab-agenda" class="tab-content">
-      <div class="dashboard-split">
-        <!-- COLUMNA IZQUIERDA: AGENDA DE AVISOS Y TAREAS PROGRAMADAS -->
+      <div class="two-col-form">
+        <!-- NUEVA TAREA MINIMALISTA -->
         <div class="glass-card panel-box">
           <div class="panel-head">
-            <div>
-              <h2>📅 Agenda de Avisos & Tareas Programadas</h2>
-              <p class="muted">Programá, editá o completá avisos de pago por WhatsApp, grabaciones de polo barbero o visitas por fecha.</p>
-            </div>
-            <div class="route-filters" id="task-filters">
-              <button class="chip active" onclick="setTaskFilter('PENDIENTES', this)">Pendientes</button>
-              <button class="chip" onclick="setTaskFilter('HOY', this)">Hoy</button>
-              <button class="chip" onclick="setTaskFilter('ATRASADAS', this)">Atrasadas</button>
-              <button class="chip" onclick="setTaskFilter('HECHAS', this)">Completadas</button>
-            </div>
+            <h2>Nueva Tarea</h2>
           </div>
 
-          <!-- FORMULARIO RÁPIDO PARA PROGRAMAR TAREA / AVISO -->
-          <form onsubmit="saveScheduledTask(event)" class="task-creator-card">
+          <form onsubmit="saveScheduledTask(event)" class="styled-form">
+            <div class="form-group">
+              <label for="task-titulo">Título *</label>
+              <input type="text" id="task-titulo" placeholder="Ej: Llevar pedido / Avisar saldo / Grabar reel" required />
+            </div>
+
+            <div class="form-group">
+              <label for="task-desc">Descripción breve</label>
+              <textarea id="task-desc" rows="2" placeholder="Detalles opcionales..."></textarea>
+            </div>
+
             <div class="form-row">
               <div class="form-group">
-                <label>Fecha Programada *</label>
+                <label for="task-fecha">Fecha</label>
                 <input type="date" id="task-fecha" required />
               </div>
               <div class="form-group">
-                <label>Tipo de Acción *</label>
+                <label for="task-tipo">Tipo</label>
                 <select id="task-tipo" onchange="autoFillTaskTitle()">
-                  <option value="AVISO PAGO">💸 Avisar de pagar (WhatsApp)</option>
-                  <option value="GRABAR POLO">🎥 Grabar polo barbero / Contenido</option>
-                  <option value="AVISO RUTA">🚚 Avisar visita / ruta mañana</option>
-                  <option value="GENERAL">📌 Otra tarea / Recordatorio</option>
+                  <option value="GENERAL">📌 General</option>
+                  <option value="AVISO PAGO">💸 Aviso de pago</option>
+                  <option value="AVISO RUTA">🚚 Aviso ruta</option>
+                  <option value="GRABAR POLO">🎥 Grabar polo</option>
                 </select>
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-group">
-                <label>Cliente (Opcional — vincula WhatsApp y deuda)</label>
-                <input type="text" id="task-cliente" list="clientes-datalist" placeholder="Barbería | Barbero" oninput="autoFillTaskTitle()" />
-              </div>
-              <div class="form-group">
-                <label>Detalle de la tarea *</label>
-                <input type="text" id="task-titulo" placeholder="Ej: Avisar saldo pendiente / Grabar reel con polo" required />
-              </div>
+            <div class="form-group">
+              <label for="task-cliente">Cliente (opcional)</label>
+              <input type="text" id="task-cliente" list="clientes-datalist" placeholder="Barbería | Barbero" oninput="autoFillTaskTitle()" />
             </div>
 
-            <button type="submit" class="btn-primary btn-full">+ Programar en Agenda</button>
+            <div class="form-group">
+              <label>Imágenes adjuntas</label>
+              <label class="task-upload-btn">
+                📷 Adjuntar fotos
+                <input type="file" id="task-images-input" accept="image/*" multiple onchange="handleTaskImagesSelect(event, 'new')" hidden />
+              </label>
+              <div id="task-images-preview" class="task-thumbs-edit"></div>
+            </div>
+
+            <button type="submit" class="btn-primary btn-full">+ Guardar Tarea</button>
           </form>
-
-          <hr class="divider" />
-
-          <div id="scheduled-tasks-list" class="activity-list"></div>
         </div>
 
-        <!-- COLUMNA DERECHA: HABIT TRACKER SEMANAL POR DÍAS DE RUTA -->
-        <div class="side-stack">
-          <div class="glass-card panel-box">
-            <div class="panel-head">
-              <div>
-                <h3>🔥 Habit Tracker · Rutina Semanal</h3>
-                <p class="muted">Marcá, editá o agregá lo que corresponde hacer cada día.</p>
-              </div>
-              <button class="btn-sm btn-pay" onclick="resetWeeklyHabits()" title="Reiniciar semana">↻ Nueva Semana</button>
+        <!-- LISTA DE TAREAS -->
+        <div class="glass-card panel-box">
+          <div class="panel-head">
+            <h2>Tareas / Pendientes</h2>
+            <div class="route-filters" id="task-filters">
+              <button class="chip active" onclick="setTaskFilter('PENDIENTES', this)">Pendientes</button>
+              <button class="chip" onclick="setTaskFilter('HECHAS', this)">Completadas</button>
+              <button class="chip" onclick="setTaskFilter('TODAS', this)">Todas</button>
             </div>
-
-            <div class="habit-progress-box">
-              <div class="bar-labels">
-                <span>Cumplimiento semanal</span>
-                <span class="font-bold text-green" id="habit-progress-text">0% (0/0)</span>
-              </div>
-              <div class="bar-track" style="margin-top:6px;">
-                <div class="bar-fill" id="habit-progress-bar" style="width:0%; background: linear-gradient(90deg, #059669, #34d399);"></div>
-              </div>
-            </div>
-
-            <!-- AGREGAR HÁBITO RECURRENTE -->
-            <form onsubmit="addHabitItem(event)" class="habit-add-row">
-              <select id="habit-day" style="width:115px; padding:9px 10px; font-size:12.5px;">
-                <option value="LUN">Lunes</option>
-                <option value="MAR">Martes</option>
-                <option value="MIE">Miércoles</option>
-                <option value="JUE">Jueves</option>
-                <option value="VIE">Viernes</option>
-                <option value="SAB">Sábado</option>
-              </select>
-              <input type="text" id="habit-text" placeholder="Ej: Avisar ruta Liniers..." style="padding:9px 12px; font-size:13px;" required />
-              <button type="submit" class="btn-primary" style="padding:9px 14px;">+</button>
-            </form>
-
-            <div id="habits-weekly-container" class="habits-list"></div>
           </div>
+
+          <div id="scheduled-tasks-list" class="activity-list"></div>
         </div>
       </div>
     </main>
 
-    <!-- TAB 2: CARGAR VENTA, COBRO O PEDIDO + ANALÍTICA POR PERÍODO + HISTORIAL COMPLETO -->
+    <!-- TAB 3: OPERACIONES + VENTAS POR ZONA + HISTORIAL -->
     <main id="tab-movimientos" class="tab-content">
       <div class="two-col-form">
         <div class="glass-card panel-box">
-          
-          <!-- CARGA RÁPIDA POR VOZ / AUDIO WHATSAPP / LISTADO SIN NOMBRE / IA -->
+          <!-- INTÉRPRETE RÁPIDO / LOTE -->
           <div class="voice-box" id="audio-dropzone">
             <div class="voice-head">
-              <span>⚡ Carga Rápida: Audio, Listado o Texto</span>
+              <span>⚡ Carga Rápida / Lote</span>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                <label class="btn-audio-upload" title="Subir nota de voz de WhatsApp (.ogg, .opus, .mp3, .m4a)">
-                  📎 Subir Audio
+                <label class="btn-audio-upload" title="Subir audio de WhatsApp">
+                  📎 Audio
                   <input type="file" id="wa-audio-file" accept="audio/*,.ogg,.opus,.m4a,.mp3,.wav" onchange="handleAudioFileSelect(event)" hidden />
                 </label>
                 <button type="button" class="btn-mic" id="btn-mic" onclick="startDictation()">🎙️ Dictar</button>
               </div>
             </div>
-            
+
             <div class="drop-hint" id="drop-hint-text">
-              💡 Pegá el listado de papá (incluso sin nombres de clientes) o arrastrá un audio de WhatsApp:
+              1 cliente = carga instantánea · Varios = lista editable
             </div>
 
-            <textarea id="voice-input" rows="3" placeholder="Ej sin nombre (contado):&#10;- 3 capas $15000&#10;- 2 cuchillas Magic Clip $24000&#10;- 1 talco $4500&#10;O con nombres: Cobré 50 mil de Lucas..."></textarea>
-            <button type="button" class="btn-primary btn-full" style="margin-top:10px;" onclick="parseSmartCommand()">✨ Interpretar Listado / Audio</button>
+            <textarea id="voice-input" rows="3" placeholder="Rápido: Lucas (Liniers): 2 capas $10000 contado&#10;Lote:&#10;- Franco (Celina): 1 VGR $45000 crédito&#10;- Marcos: Abono $20000 transferencia"></textarea>
+            <button type="button" class="btn-primary btn-full" style="margin-top:8px;" onclick="parseSmartCommand()">✨ Interpretar</button>
+
+            <!-- VISTA PREVIA MODO RÁPIDO (1 SOLO CLIENTE) -->
+            <div id="quick-single-preview" class="quick-preview-card" style="display:none;"></div>
 
             <!-- BANNER DE PEDIDO ÚNICO DETECTADO -->
             <div id="detected-order-banner" class="order-banner" style="display:none;">
               <div class="order-banner-info">
-                <strong>📦 ¡Pedido / Encargo Detectado!</strong>
+                <strong>📦 Pedido Detectado</strong>
                 <span id="detected-order-summary"></span>
               </div>
-              <button type="button" class="btn-sm btn-order-save" onclick="saveDetectedOrder()">+ Guardar en Pedidos</button>
+              <button type="button" class="btn-sm btn-order-save" onclick="saveDetectedOrder()">+ Guardar Pedido</button>
             </div>
 
-            <!-- CONTENEDOR DE LOTE MULTI-OPERACIÓN -->
-            <div id="batch-review-container" style="display:none; margin-top:12px;"></div>
+            <!-- VISTA PREVIA MODO LOTE (LISTA MÚLTIPLE) -->
+            <div id="batch-review-container" style="display:none; margin-top:10px;"></div>
           </div>
 
           <hr class="divider" />
 
-          <h2>Registrar Operación Individual</h2>
-          <p class="muted">En <strong>Venta de Contado</strong> el cliente es opcional (ideal para ventas mostrador/varios).</p>
-          
+          <h2>Nueva Operación</h2>
           <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
             <div class="form-row">
               <div class="form-group">
@@ -357,168 +328,171 @@
                 <input type="date" id="mov-fecha" required />
               </div>
               <div class="form-group">
-                <label>Tipo de Operación</label>
+                <label>Tipo</label>
                 <select id="mov-tipo" onchange="toggleProductPicker()" required>
-                  <option value="VENTA A CREDITO">📝 VENTA A CRÉDITO (Suma deuda)</option>
-                  <option value="VENTA CONTADO">✅ VENTA DE CONTADO (Cliente opcional)</option>
-                  <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
-                  <option value="PEDIDO">📦 PEDIDO / ENCARGO (Historial + Bandeja Pedidos)</option>
+                  <option value="VENTA A CREDITO">📝 Venta a Crédito</option>
+                  <option value="VENTA CONTADO">✅ Venta de Contado</option>
+                  <option value="ABONO / PAGO">💵 Abono / Cobro</option>
+                  <option value="PEDIDO">📦 Pedido</option>
                 </select>
               </div>
             </div>
 
             <div class="form-group">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
-                <label id="mov-cliente-label" style="margin-bottom:0;">Cliente (Barbería — Barbero)</label>
-                <button type="button" class="btn-sm btn-pay" style="padding:3px 9px; font-size:11px;" onclick="fillConsumidorFinal()">⚡ Mostrador / Varios</button>
+                <label id="mov-cliente-label" style="margin-bottom:0;">Cliente</label>
+                <button type="button" class="btn-sm btn-pay" style="padding:3px 9px; font-size:11px;" onclick="fillConsumidorFinal()">⚡ Mostrador</button>
               </div>
-              <input type="text" id="mov-cliente-search" list="clientes-datalist" placeholder="Buscá barbería/barbero o dejá vacío si es contado..." required />
+              <input type="text" id="mov-cliente-search" list="clientes-datalist" placeholder="Barbería | Barbero..." required />
               <datalist id="clientes-datalist"></datalist>
             </div>
 
             <!-- SELECTOR DE PRODUCTOS -->
             <div id="product-picker-box" class="picker-box">
-              <label style="font-size:12px; font-weight:600; color:#93c5fd; display:block; margin-bottom:8px;">
-                📦 Agregar Productos del Stock (podés cargar varios juntos)
-              </label>
+              <label style="font-size:12px; font-weight:600; color:#93c5fd; display:block; margin-bottom:6px;">📦 Stock</label>
               <div class="picker-row">
-                <input type="text" id="prod-pick-search" list="productos-datalist" placeholder="Escribí nombre o código..." />
+                <input type="text" id="prod-pick-search" list="productos-datalist" placeholder="Producto o código..." />
                 <datalist id="productos-datalist"></datalist>
-                <input type="number" id="prod-pick-qty" value="1" min="1" style="width:68px; text-align:center;" />
-                <button type="button" class="btn-ghost" onclick="addCartItem()">+ Añadir</button>
+                <input type="number" id="prod-pick-qty" value="1" min="1" style="width:64px; text-align:center;" />
+                <button type="button" class="btn-ghost" onclick="addCartItem()">+</button>
               </div>
               <div id="cart-items-list" class="cart-list"></div>
             </div>
 
             <div class="form-row">
               <div class="form-group">
-                <label>Monto Total ($ ARS)</label>
-                <input type="number" id="mov-monto" min="0" step="any" placeholder="Ej: 45000" required />
+                <label>Total ($)</label>
+                <input type="number" id="mov-monto" min="0" step="any" placeholder="45000" required />
               </div>
               <div class="form-group">
-                <label>Medio de Pago</label>
+                <label>Medio</label>
                 <select id="mov-medio">
                   <option value="EFECTIVO">Efectivo</option>
                   <option value="TRANSFERENCIA">Transferencia / MP</option>
-                  <option value="CUENTA CORRIENTE">Cuenta Corriente (Venta a Crédito)</option>
+                  <option value="CUENTA CORRIENTE">Cuenta Corriente</option>
                 </select>
               </div>
             </div>
 
             <div class="form-group" id="abono-parcial-group">
-              <label>Entrega / Abono parcial en el momento ($ - Opcional)</label>
-              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="Si llevó a crédito pero dejó plata, ponela acá" />
+              <label>Entrega parcial ($ - opcional)</label>
+              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="0" />
             </div>
 
-            <div class="form-group">
-              <label>Detalle de Productos / Pedido</label>
-              <input type="text" id="mov-detalle" placeholder="Se completa solo o escribí manual" />
-            </div>
-
-            <div class="form-group">
-              <label>Observaciones / Día de entrega (Opcional)</label>
-              <input type="text" id="mov-obs" placeholder="Ej: Listado ventas sábado sin nombre" />
+            <div class="form-row">
+              <div class="form-group">
+                <label>Detalle</label>
+                <input type="text" id="mov-detalle" placeholder="Productos / concepto" />
+              </div>
+              <div class="form-group">
+                <label>Nota</label>
+                <input type="text" id="mov-obs" placeholder="Opcional" />
+              </div>
             </div>
 
             <button type="submit" class="btn-primary btn-full">Guardar Operación</button>
           </form>
         </div>
 
-        <!-- COLUMNA DERECHA: REPORTE POR RANGO DE FECHAS + HISTORIAL DE OPERACIONES -->
+        <!-- COLUMNA DERECHA: RESUMEN + VENTAS POR ZONA + HISTORIAL -->
         <div class="side-stack">
-          <!-- APARTADO: REPORTE DE VENTAS POR PERÍODO Y MODALIDAD -->
           <div class="glass-card panel-box daily-papa-card">
-            <div class="panel-head" style="margin-bottom:12px;">
-              <div>
-                <h3>📊 Resumen de Ventas por Período</h3>
-                <p class="muted">Elegí fecha inicio y final y marcá qué modalidades querés sumar.</p>
-              </div>
+            <div class="panel-head" style="margin-bottom:10px;">
+              <h3>📊 Resumen & Ventas por Zona</h3>
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('TODAY')">Hoy</button>
                 <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('WEEK')">7 días</button>
-                <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('MONTH')">Este Mes</button>
+                <button type="button" class="btn-sm btn-pay" onclick="setReportRangePreset('MONTH')">Mes</button>
               </div>
             </div>
 
-            <!-- SELECTORES FECHA INICIO Y FECHA FINAL -->
-            <div class="form-row" style="margin-bottom:12px;">
+            <div class="form-row-3" style="margin-bottom:10px;">
               <div class="form-group">
-                <label>Desde (Fecha Inicio)</label>
+                <label>Desde</label>
                 <input type="date" id="report-start-date" onchange="renderMovements()" style="padding:8px 10px; font-size:13px;" />
               </div>
               <div class="form-group">
-                <label>Hasta (Fecha Final)</label>
+                <label>Hasta</label>
                 <input type="date" id="report-end-date" onchange="renderMovements()" style="padding:8px 10px; font-size:13px;" />
+              </div>
+              <div class="form-group">
+                <label>Zona</label>
+                <select id="report-zone-filter" onchange="setReportZoneFilter(this.value)" style="padding:8px 10px; font-size:13px;">
+                  <option value="TODAS">Todas las zonas</option>
+                </select>
               </div>
             </div>
 
-            <!-- TARJETA PRINCIPAL CON TOTAL COMBINABLE -->
             <div class="papa-kpi-box papa-kpi-main" style="margin-bottom:10px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span class="papa-kpi-label" style="color:#bfdbfe; font-size:12px;">💰 TOTAL SELECCIONADO EN EL PERÍODO</span>
+                <span class="papa-kpi-label" style="color:#bfdbfe; font-size:12px;">💰 TOTAL DEL PERÍODO</span>
                 <span class="kpi-badge badge-blue" id="report-selected-tags">Contado + Crédito + Pedidos</span>
               </div>
               <strong class="papa-kpi-value" style="font-size:26px; margin:2px 0;" id="report-total-seleccionado">$0</strong>
-              <span class="papa-kpi-sub" id="report-total-count">0 operaciones incluidas · Cobrado en abonos: <b class="text-green" id="report-cobrado-periodo">$0</b></span>
+              <span class="papa-kpi-sub" id="report-total-count">0 ops · Cobrado: <b class="text-green" id="report-cobrado-periodo">$0</b></span>
             </div>
 
-            <!-- 3 TARJETAS INDIVIDUALES CON CHECKBOX PARA ACTIVAR/DESACTIVAR CADA UNA -->
             <div class="papa-kpis-grid">
               <label class="papa-kpi-box report-check-card" id="card-chk-contado">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                  <span class="papa-kpi-label">✅ Venta de Contado</span>
+                  <span class="papa-kpi-label">✅ Contado</span>
                   <input type="checkbox" id="chk-sum-contado" checked onchange="renderMovements()" style="width:16px; height:16px; cursor:pointer;" />
                 </div>
                 <strong class="papa-kpi-value text-green" style="font-size:17px;" id="report-contado-monto">$0</strong>
-                <span class="papa-kpi-sub" id="report-contado-count">0 ventas</span>
+                <span class="papa-kpi-sub" id="report-contado-count">0</span>
               </label>
 
               <label class="papa-kpi-box report-check-card" id="card-chk-credito">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                  <span class="papa-kpi-label">📝 Venta a Crédito</span>
+                  <span class="papa-kpi-label">📝 Crédito</span>
                   <input type="checkbox" id="chk-sum-credito" checked onchange="renderMovements()" style="width:16px; height:16px; cursor:pointer;" />
                 </div>
                 <strong class="papa-kpi-value text-amber" style="font-size:17px;" id="report-credito-monto">$0</strong>
-                <span class="papa-kpi-sub" id="report-credito-count">0 ventas</span>
+                <span class="papa-kpi-sub" id="report-credito-count">0</span>
               </label>
 
               <label class="papa-kpi-box report-check-card" id="card-chk-pedido">
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
-                  <span class="papa-kpi-label">📦 A Pedido</span>
+                  <span class="papa-kpi-label">📦 Pedidos</span>
                   <input type="checkbox" id="chk-sum-pedido" checked onchange="renderMovements()" style="width:16px; height:16px; cursor:pointer;" />
                 </div>
                 <strong class="papa-kpi-value" style="font-size:17px; color:#ddd6fe;" id="report-pedido-monto">$0</strong>
-                <span class="papa-kpi-sub" id="report-pedido-count">0 pedidos</span>
+                <span class="papa-kpi-sub" id="report-pedido-count">0</span>
               </label>
             </div>
 
-            <div style="margin-top:12px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+            <!-- DESGLOSE VENTAS POR ZONA -->
+            <div class="zone-sales-section">
+              <div class="zone-sales-head">
+                <span>📍 Ventas por Zona</span>
+                <span class="muted" style="font-size:11.5px;" id="report-range-label"></span>
+              </div>
+              <div id="sales-by-zone-list" class="bar-chart-container"></div>
+            </div>
+
+            <div style="margin-top:10px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
               <label class="toggle-label">
                 <input type="checkbox" id="filter-movs-by-range" onchange="renderMovements()" />
-                Filtrar tabla inferior por este rango de fechas
+                Filtrar historial por fecha y zona
               </label>
-              <span class="muted" style="font-size:11.5px;" id="report-range-label"></span>
             </div>
           </div>
 
-          <!-- HISTORIAL COMPLETO DE OPERACIONES (EDITABLE Y ELIMINABLE) -->
+          <!-- HISTORIAL COMPLETO -->
           <div class="glass-card panel-box">
-            <div class="panel-head">
-              <div>
-                <h2>Historial de Operaciones (Ventas, Cobros & Pedidos)</h2>
-                <p class="muted">Tocá ✏️ para corregir cualquier operación o 🗑 para eliminarla y restaurar stock.</p>
-              </div>
+            <div class="panel-head" style="margin-bottom:10px;">
+              <h2>Historial</h2>
             </div>
 
             <div class="search-bar-inline" style="display:flex; gap:8px; flex-wrap:wrap;">
-              <input type="text" id="movs-history-search" placeholder="🔍 Filtrar historial por cliente, producto o tipo..." oninput="renderMovements()" style="flex:1; min-width:200px;" />
-              <select id="movs-type-filter" onchange="renderMovements()" style="width:190px;">
-                <option value="TODOS">Todos los tipos</option>
-                <option value="VENTAS">Todas las Ventas</option>
-                <option value="VENTA CONTADO">Solo Venta de Contado</option>
-                <option value="VENTA A CREDITO">Solo Venta a Crédito</option>
-                <option value="PEDIDO">Solo A Pedido</option>
-                <option value="ABONO / PAGO">Solo Cobros / Abonos</option>
+              <input type="text" id="movs-history-search" placeholder="🔍 Buscar cliente, zona o detalle..." oninput="renderMovements()" style="flex:1; min-width:180px;" />
+              <select id="movs-type-filter" onchange="renderMovements()" style="width:170px;">
+                <option value="TODOS">Todos</option>
+                <option value="VENTAS">Ventas</option>
+                <option value="VENTA CONTADO">Contado</option>
+                <option value="VENTA A CREDITO">Crédito</option>
+                <option value="PEDIDO">Pedidos</option>
+                <option value="ABONO / PAGO">Abonos</option>
               </select>
             </div>
 
@@ -530,7 +504,7 @@
                     <th>Cliente / Detalle</th>
                     <th>Tipo</th>
                     <th class="text-right">Monto</th>
-                    <th class="text-right">Acciones</th>
+                    <th class="text-right"></th>
                   </tr>
                 </thead>
                 <tbody id="all-movs-body"></tbody>
@@ -541,24 +515,22 @@
       </div>
     </main>
 
-    <!-- TAB 3: PEDIDOS Y ENCARGOS -->
+    <!-- TAB 4: PEDIDOS SIMPLIFICADOS -->
     <main id="tab-pedidos" class="tab-content">
       <div class="dashboard-split">
         <div class="glass-card panel-box">
           <div class="panel-head">
-            <div>
-              <h2>📦 Bandeja de Pedidos & Encargos</h2>
-              <p class="muted">Editá, entregá o eliminá pedidos. Al entregar, se convierten en venta y descuentan stock.</p>
-            </div>
+            <h2>📦 Pedidos</h2>
             <div class="route-filters" id="order-status-filters">
-              <button class="chip active" onclick="setOrderFilter('PENDIENTE', this)">Pendientes</button>
-              <button class="chip" onclick="setOrderFilter('ENTREGADO', this)">Entregados</button>
               <button class="chip" onclick="setOrderFilter('TODOS', this)">Todos</button>
+              <button class="chip active" onclick="setOrderFilter('PENDIENTE', this)">Pendiente</button>
+              <button class="chip" onclick="setOrderFilter('PREPARADO', this)">Comprado / Preparado</button>
+              <button class="chip" onclick="setOrderFilter('ENTREGADO', this)">Entregado</button>
             </div>
           </div>
 
           <div class="search-bar-inline">
-            <input type="text" id="order-search" placeholder="🔍 Buscar pedido por barbería, barbero o artículo..." oninput="renderOrders()" />
+            <input type="text" id="order-search" placeholder="🔍 Buscar pedido, cliente o artículo..." oninput="renderOrders()" />
           </div>
 
           <div class="table-wrap">
@@ -567,8 +539,8 @@
                 <tr>
                   <th>Fecha / Ruta</th>
                   <th>Cliente</th>
-                  <th>Pedido / Artículos</th>
-                  <th class="text-right">Est.</th>
+                  <th>Artículos</th>
+                  <th>Estado</th>
                   <th class="text-right">Acciones</th>
                 </tr>
               </thead>
@@ -577,24 +549,17 @@
           </div>
         </div>
 
-        <!-- RESUMEN DE MERCADERÍA A PREPARAR -->
         <div class="side-stack">
           <div class="glass-card panel-box">
             <div class="panel-head">
-              <div>
-                <h3>🚚 Lista de Carga (Pedidos Pendientes)</h3>
-                <p class="muted">Total de mercadería a preparar antes de salir a ruta</p>
-              </div>
+              <h3>🚚 Lista de Carga</h3>
             </div>
             <div id="orders-picking-list" class="activity-list"></div>
           </div>
 
           <div class="glass-card panel-box">
             <div class="panel-head">
-              <div>
-                <h3>➕ Nuevo Pedido Rápido</h3>
-                <p class="muted">Anotar encargo (se guarda aquí y en el Historial)</p>
-              </div>
+              <h3>➕ Nuevo Pedido</h3>
             </div>
             <form onsubmit="saveQuickOrder(event)" class="styled-form">
               <div class="form-group">
@@ -602,12 +567,12 @@
                 <input type="text" id="quick-order-cli" list="clientes-datalist" placeholder="Barbería | Barbero" required />
               </div>
               <div class="form-group">
-                <label>¿Qué encargó?</label>
-                <input type="text" id="quick-order-detail" placeholder="Ej: 2 capas Everest y 1 cuchilla Magic Clip" required />
+                <label>Artículos</label>
+                <input type="text" id="quick-order-detail" placeholder="Ej: 2 capas y 1 cuchilla Magic Clip" required />
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label>Monto Estimado ($)</label>
+                  <label>Estimado ($)</label>
                   <input type="number" id="quick-order-total" value="0" min="0" />
                 </div>
                 <div class="form-group">
@@ -622,19 +587,16 @@
       </div>
     </main>
 
-    <!-- TAB 4: CLIENTES -->
+    <!-- TAB 5: CLIENTES -->
     <main id="tab-clientes" class="tab-content">
       <div class="glass-card panel-box">
         <div class="panel-head">
-          <div>
-            <h2>Directorio de Barberías</h2>
-            <p class="muted">Agregá, editá o eliminá barberías, zonas y días de ruta.</p>
-          </div>
+          <h2>Clientes</h2>
           <button class="btn-primary" onclick="openClientModal()">+ Nuevo Cliente</button>
         </div>
 
         <div class="search-bar-inline">
-          <input type="text" id="cli-search" placeholder="🔍 Filtrar clientes por nombre, zona o ruta..." oninput="renderClients()" />
+          <input type="text" id="cli-search" placeholder="🔍 Filtrar por nombre, zona o ruta..." oninput="renderClients()" />
         </div>
 
         <div class="table-wrap">
@@ -647,7 +609,7 @@
                 <th>Ruta</th>
                 <th>Nivel</th>
                 <th class="text-right">Deuda</th>
-                <th class="text-right">Acciones</th>
+                <th class="text-right"></th>
               </tr>
             </thead>
             <tbody id="clients-body"></tbody>
@@ -656,25 +618,22 @@
       </div>
     </main>
 
-    <!-- TAB 5: INVENTARIO -->
+    <!-- TAB 6: INVENTARIO -->
     <main id="tab-inventario" class="tab-content">
       <div class="glass-card panel-box">
         <div class="panel-head">
-          <div>
-            <h2>Inventario de Insumos</h2>
-            <p class="muted">Control rápido de stock (-1 / +1), edición completa de precios/productos y eliminación.</p>
-          </div>
+          <h2>Stock</h2>
           <div class="inv-controls">
             <label class="toggle-label">
               <input type="checkbox" id="filter-low-stock" onchange="renderInventory()" />
-              Solo stock bajo (≤ 3)
+              Stock bajo (≤ 3)
             </label>
             <button class="btn-primary" onclick="openProductModal()">+ Producto</button>
           </div>
         </div>
 
         <div class="search-bar-inline">
-          <input type="text" id="inv-search" placeholder="🔍 Buscar cuchilla, máquina VGR, capa, after shave..." oninput="renderInventory()" />
+          <input type="text" id="inv-search" placeholder="🔍 Buscar producto o código..." oninput="renderInventory()" />
         </div>
 
         <div class="table-wrap">
@@ -685,7 +644,7 @@
                 <th>Producto</th>
                 <th class="text-center">Stock</th>
                 <th class="text-right">Precio</th>
-                <th class="text-right">Acciones</th>
+                <th class="text-right"></th>
               </tr>
             </thead>
             <tbody id="inv-body"></tbody>
@@ -805,12 +764,15 @@
     <div class="dock-pill">
       <button class="dock-btn active" data-tab="dashboard" onclick="switchTab('dashboard')" title="Inicio">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span class="dock-badge-red" id="dock-badge-dashboard" style="display:none;">0</span>
       </button>
-      <button class="dock-btn" data-tab="agenda" onclick="switchTab('agenda')" title="Agenda & Rutina">
+      <button class="dock-btn" data-tab="agenda" onclick="switchTab('agenda')" title="Tareas">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
+        <span class="dock-badge-red" id="dock-badge-agenda" style="display:none;">0</span>
       </button>
       <button class="dock-btn" data-tab="pedidos" onclick="switchTab('pedidos')" title="Pedidos">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>
+        <span class="dock-badge-red" id="dock-badge-pedidos" style="display:none;">0</span>
       </button>
       <button class="dock-btn" data-tab="clientes" onclick="switchTab('clientes')" title="Clientes">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -819,7 +781,7 @@
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
       </button>
     </div>
-    <button class="dock-fab" data-tab="movimientos" onclick="switchTab('movimientos')" title="Nueva Venta, Cobro o Audio">
+    <button class="dock-fab" data-tab="movimientos" onclick="switchTab('movimientos')" title="Nueva Operación">
       <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     </button>
   </nav>
@@ -846,7 +808,7 @@
               <option value="VENTA A CREDITO">📝 VENTA A CRÉDITO (Suma deuda)</option>
               <option value="VENTA CONTADO">✅ VENTA DE CONTADO (Cliente opcional)</option>
               <option value="ABONO / PAGO">💵 ABONO / PAGO (Resta deuda)</option>
-              <option value="PEDIDO">📦 PEDIDO / ENCARGO</option>
+              <option value="PEDIDO">📦 PEDIDO</option>
             </select>
           </div>
         </div>
@@ -854,7 +816,8 @@
         <div class="form-group" id="edit-op-order-status-group" style="display:none;">
           <label>Estado del Pedido</label>
           <select id="edit-op-order-estado">
-            <option value="PENDIENTE">⏳ PENDIENTE DE ENTREGA</option>
+            <option value="PENDIENTE">⏳ PENDIENTE</option>
+            <option value="PREPARADO">📦 COMPRADO / PREPARADO</option>
             <option value="ENTREGADO">✅ ENTREGADO</option>
           </select>
         </div>
@@ -1012,27 +975,35 @@
     </div>
   </div>
 
-  <!-- MODAL 4: EDITAR TAREA DE AGENDA -->
+  <!-- MODAL 4: EDITAR TAREA CON DESCRIPCIÓN Y FOTOS -->
   <div id="task-modal" class="modal-overlay" style="display:none;">
     <div class="modal-card glass-card">
       <div class="panel-head">
-        <h3>✏️ Editar Tarea / Aviso</h3>
+        <h3>✏️ Editar Tarea</h3>
         <button class="btn-icon" onclick="closeModal('task-modal')">✕</button>
       </div>
       <form onsubmit="saveEditedTask(event)" class="styled-form">
         <input type="hidden" id="edit-task-id" />
+        <div class="form-group">
+          <label>Título *</label>
+          <input type="text" id="edit-task-titulo" required />
+        </div>
+        <div class="form-group">
+          <label>Descripción breve</label>
+          <textarea id="edit-task-desc" rows="2"></textarea>
+        </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Fecha Programada *</label>
+            <label>Fecha *</label>
             <input type="date" id="edit-task-fecha" required />
           </div>
           <div class="form-group">
-            <label>Tipo de Acción *</label>
+            <label>Tipo</label>
             <select id="edit-task-tipo">
-              <option value="AVISO PAGO">💸 Avisar de pagar (WhatsApp)</option>
-              <option value="GRABAR POLO">🎥 Grabar polo barbero / Contenido</option>
-              <option value="AVISO RUTA">🚚 Avisar visita / ruta mañana</option>
-              <option value="GENERAL">📌 Otra tarea / Recordatorio</option>
+              <option value="GENERAL">📌 General</option>
+              <option value="AVISO PAGO">💸 Aviso de pago</option>
+              <option value="AVISO RUTA">🚚 Aviso ruta</option>
+              <option value="GRABAR POLO">🎥 Grabar polo</option>
             </select>
           </div>
         </div>
@@ -1041,12 +1012,22 @@
           <input type="text" id="edit-task-cliente" list="clientes-datalist" placeholder="Barbería | Barbero" />
         </div>
         <div class="form-group">
-          <label>Detalle de la tarea *</label>
-          <input type="text" id="edit-task-titulo" required />
+          <label>Imágenes adjuntas</label>
+          <label class="task-upload-btn">
+            📷 Agregar fotos
+            <input type="file" id="edit-task-images-input" accept="image/*" multiple onchange="handleTaskImagesSelect(event, 'edit')" hidden />
+          </label>
+          <div id="edit-task-images-preview" class="task-thumbs-edit"></div>
         </div>
         <button type="submit" class="btn-primary btn-full">Guardar Cambios</button>
       </form>
     </div>
+  </div>
+
+  <!-- MODAL LIGHTBOX PARA AMPLIAR IMÁGENES DE TAREAS -->
+  <div id="image-lightbox" class="lightbox-overlay" style="display:none;" onclick="closeLightbox(event)">
+    <button type="button" class="lightbox-close" onclick="closeModal('image-lightbox')" aria-label="Cerrar imagen">✕</button>
+    <img id="lightbox-img" src="" alt="Vista ampliada" onclick="event.stopPropagation()" />
   </div>
 
   <div id="toast" class="toast"></div>
