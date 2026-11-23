@@ -1489,3 +1489,103 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid rgba(16, 185, 129, 0.45);
 }
 
+/* CREAR CLIENTE EN VENTA + ALERTAS INLINE */
+.btn-create-cli {
+  padding: 3px 9px;
+  font-size: 11px;
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  transition: all 0.15s ease;
+}
+
+.btn-create-cli:hover {
+  background: rgba(16, 185, 129, 0.28);
+  color: #fff;
+}
+
+.inline-alert {
+  margin-top: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.inline-alert-error {
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+.inline-alert-warn {
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.42);
+  color: #6ee7b7;
+}
+
+/* FILTROS AVANZADOS Y RESUMEN EN CLIENTES */
+.clients-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.6fr) repeat(3, minmax(140px, 1fr)) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.clients-search-wrap {
+  min-width: 0;
+}
+
+.clients-summary-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-md);
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  font-size: 13px;
+}
+
+.saldo-favor-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  margin-bottom: 3px;
+}
+
+.field-hint-box {
+  margin-top: 7px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.26);
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+}
+
+@media (max-width: 960px) {
+  .clients-filter-bar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .clients-search-wrap {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 600px) {
+  .clients-filter-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
