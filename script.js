@@ -27,11 +27,8 @@ let cloudConnectionState = 'disconnected';
 let lastSyncAt = '';
 let cachedGeminiModel = '';
 
-const fmtMoney = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
-const fmtSignedMoney = (n) => {
-  const rounded = Math.round(Number(n) || 0);
-  return rounded < 0 ? '-$' + Math.abs(rounded).toLocaleString('es-AR') : '$' + rounded.toLocaleString('es-AR');
-};
+const fmtMoney = (n) => '$' + Math.max(0, Math.round(Number(n) || 0)).toLocaleString('es-AR');
+const fmtSignedMoney = (n) => fmtMoney(n);
 const todayISO = () => new Date().toISOString().split('T')[0];
 
 function isAnonymousClientName(raw) {
@@ -556,23 +553,38 @@ function switchTab(tabId) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function getClientMovementsNet(client) {
-  let net = 0;
+function computeClientBalanceWithBase(client, customDeudaBase = null) {
+  let saldo = Math.max(0, Number(customDeudaBase !== null ? customDeudaBase : client.deudaBase) || 0);
   const b1 = (client.barberia || '').trim().toUpperCase();
   const b2 = (client.barbero || '').trim().toUpperCase();
 
-  (db.movs || []).forEach(m => {
-    if ((m.barberia || '').trim().toUpperCase() === b1 && (m.barbero || '').trim().toUpperCase() === b2) {
-      const normTipo = normalizeOpType(m.tipo);
-      if (normTipo === 'VENTA A CREDITO') net += Number(m.monto) || 0;
-      if (normTipo === 'ABONO / PAGO') net -= Number(m.monto) || 0;
-    }
+  const clientMovs = (db.movs || [])
+    .map((m, idx) => ({ m, idx }))
+    .filter(({ m }) =>
+      (m.barberia || '').trim().toUpperCase() === b1 &&
+      (m.barbero || '').trim().toUpperCase() === b2
+    )
+    .sort((a, b) => {
+      const cmp = (a.m.fecha || '').localeCompare(b.m.fecha || '');
+      return cmp !== 0 ? cmp : a.idx - b.idx;
+    });
+
+  clientMovs.forEach(({ m }) => {
+    const normTipo = normalizeOpType(m.tipo);
+    const monto = Number(m.monto) || 0;
+    if (normTipo === 'VENTA A CREDITO') saldo += monto;
+    if (normTipo === 'ABONO / PAGO') saldo = Math.max(0, saldo - monto);
   });
-  return net;
+
+  return Math.max(0, saldo);
+}
+
+function getClientMovementsNet(client) {
+  return Math.max(0, computeClientBalanceWithBase(client, 0));
 }
 
 function getClientBalance(client) {
-  return (Number(client.deudaBase) || 0) + getClientMovementsNet(client);
+  return computeClientBalanceWithBase(client, null);
 }
 
 function renderAll() {
@@ -658,7 +670,16 @@ function renderKPIs() {
 function setRouteFilter(route, btn) {
   activeRouteFilter = route;
   document.querySelectorAll('#route-filters .chip').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
+  renderDashboard();
+}
+
+function resetDashboardFilters() {
+  const searchEl = document.getElementById('dash-search');
+  if (searchEl) searchEl.value = '';
+  activeRouteFilter = 'TODOS';
+  const chips = document.querySelectorAll('#route-filters .chip');
+  chips.forEach((c, idx) => c.classList.toggle('active', idx === 0));
   renderDashboard();
 }
 
@@ -1096,9 +1117,29 @@ async function saveEditedOperation(e) {
     }
   }
 
+  resetEditOpModalForm();
   closeModal('edit-op-modal');
   await persistData();
   showToast('✅ Operación actualizada y saldos recalculados');
+}
+
+function resetEditOpModalForm() {
+  editOpCart = [];
+  const form = document.getElementById('edit-op-form');
+  if (form) form.reset();
+  if (document.getElementById('edit-op-id')) document.getElementById('edit-op-id').value = '';
+  if (document.getElementById('edit-op-was-order')) document.getElementById('edit-op-was-order').value = '0';
+  if (document.getElementById('edit-op-fecha')) document.getElementById('edit-op-fecha').value = todayISO();
+  if (document.getElementById('edit-op-tipo')) document.getElementById('edit-op-tipo').value = 'VENTA A CREDITO';
+  if (document.getElementById('edit-op-order-estado')) document.getElementById('edit-op-order-estado').value = 'PENDIENTE';
+  if (document.getElementById('edit-op-cliente')) document.getElementById('edit-op-cliente').value = '';
+  if (document.getElementById('edit-op-prod-search')) document.getElementById('edit-op-prod-search').value = '';
+  if (document.getElementById('edit-op-prod-qty')) document.getElementById('edit-op-prod-qty').value = 1;
+  if (document.getElementById('edit-op-monto')) document.getElementById('edit-op-monto').value = '';
+  if (document.getElementById('edit-op-medio')) document.getElementById('edit-op-medio').value = 'EFECTIVO';
+  if (document.getElementById('edit-op-detalle')) document.getElementById('edit-op-detalle').value = '';
+  if (document.getElementById('edit-op-obs')) document.getElementById('edit-op-obs').value = '';
+  renderEditOpCart(false);
 }
 
 function deleteFromEditOpModal() {
@@ -1231,8 +1272,47 @@ function closeLightbox(event) {
 function setTaskFilter(filter, btn) {
   activeTaskFilter = filter;
   document.querySelectorAll('#task-filters .chip').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
   renderAgenda();
+}
+
+function resetTaskFilters() {
+  const searchEl = document.getElementById('task-search');
+  if (searchEl) searchEl.value = '';
+  activeTaskFilter = 'TODAS';
+  const chips = document.querySelectorAll('#task-filters .chip');
+  chips.forEach(c => {
+    const isAll = (c.getAttribute('onclick') || '').includes("'TODAS'");
+    c.classList.toggle('active', isAll);
+  });
+  renderAgenda();
+}
+
+function resetTaskForm() {
+  const form = document.getElementById('task-form');
+  if (form) form.reset();
+  if (document.getElementById('task-titulo')) document.getElementById('task-titulo').value = '';
+  if (document.getElementById('task-desc')) document.getElementById('task-desc').value = '';
+  if (document.getElementById('task-fecha')) document.getElementById('task-fecha').value = todayISO();
+  if (document.getElementById('task-tipo')) document.getElementById('task-tipo').value = 'GENERAL';
+  if (document.getElementById('task-cliente')) document.getElementById('task-cliente').value = '';
+  if (document.getElementById('task-images-input')) document.getElementById('task-images-input').value = '';
+  newTaskImages = [];
+  renderTaskImagePreviews('new');
+}
+
+function resetEditTaskForm() {
+  const form = document.getElementById('edit-task-form');
+  if (form) form.reset();
+  if (document.getElementById('edit-task-id')) document.getElementById('edit-task-id').value = '';
+  if (document.getElementById('edit-task-titulo')) document.getElementById('edit-task-titulo').value = '';
+  if (document.getElementById('edit-task-desc')) document.getElementById('edit-task-desc').value = '';
+  if (document.getElementById('edit-task-fecha')) document.getElementById('edit-task-fecha').value = todayISO();
+  if (document.getElementById('edit-task-tipo')) document.getElementById('edit-task-tipo').value = 'GENERAL';
+  if (document.getElementById('edit-task-cliente')) document.getElementById('edit-task-cliente').value = '';
+  if (document.getElementById('edit-task-images-input')) document.getElementById('edit-task-images-input').value = '';
+  editTaskImages = [];
+  renderTaskImagePreviews('edit');
 }
 
 async function saveScheduledTask(e) {
@@ -1254,11 +1334,7 @@ async function saveScheduledTask(e) {
     done: false
   });
 
-  document.getElementById('task-cliente').value = '';
-  document.getElementById('task-titulo').value = '';
-  if (document.getElementById('task-desc')) document.getElementById('task-desc').value = '';
-  newTaskImages = [];
-  renderTaskImagePreviews('new');
+  resetTaskForm();
   await persistData();
   showToast('✅ Tarea guardada');
 }
@@ -1292,6 +1368,7 @@ async function saveEditedTask(e) {
   t.desc = (document.getElementById('edit-task-desc')?.value || '').trim();
   t.images = [...editTaskImages];
 
+  resetEditTaskForm();
   closeModal('task-modal');
   await persistData();
   showToast('✏️ Tarea actualizada');
@@ -1317,6 +1394,7 @@ function renderAgenda() {
   if (!listEl) return;
 
   const today = todayISO();
+  const q = (document.getElementById('task-search')?.value || '').trim().toLowerCase();
   let tasks = [...(db.tasks || [])].sort((a, b) => {
     if (Boolean(a.done) !== Boolean(b.done)) return a.done ? 1 : -1;
     return (a.fecha || '').localeCompare(b.fecha || '');
@@ -1324,6 +1402,16 @@ function renderAgenda() {
 
   if (activeTaskFilter === 'PENDIENTES') tasks = tasks.filter(t => !t.done);
   else if (activeTaskFilter === 'HECHAS') tasks = tasks.filter(t => t.done);
+
+  if (q) {
+    tasks = tasks.filter(t =>
+      (t.titulo || '').toLowerCase().includes(q) ||
+      (t.desc || '').toLowerCase().includes(q) ||
+      (t.cliente || '').toLowerCase().includes(q) ||
+      (t.tipo || '').toLowerCase().includes(q) ||
+      (t.fecha || '').toLowerCase().includes(q)
+    );
+  }
 
   listEl.innerHTML = tasks.length ? tasks.map(t => {
     const isOverdue = !t.done && t.fecha < today;
@@ -1367,6 +1455,7 @@ function quickPayment(barberia, barbero, saldo) {
   document.getElementById('mov-monto').value = saldo > 0 ? saldo : '';
   document.getElementById('mov-detalle').value = 'Abono de saldo pendiente';
   hideMovClientAlert();
+  hideMovLastFeedback();
   updateMovClientBalanceNotice();
   document.getElementById('mov-monto').focus();
 }
@@ -1393,9 +1482,78 @@ function hideMovClientAlert() {
   }
 }
 
+function showMovLastFeedback(msg) {
+  const el = document.getElementById('mov-last-feedback');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideMovLastFeedback() {
+  const el = document.getElementById('mov-last-feedback');
+  if (el) {
+    el.style.display = 'none';
+    el.textContent = '';
+  }
+}
+
 function onMovClientInput() {
   hideMovClientAlert();
+  hideMovLastFeedback();
+  updateAbonoParcialVisibility();
   updateMovClientBalanceNotice();
+}
+
+function fillClientPendingDebtIntoAbono() {
+  const cliInput = document.getElementById('mov-cliente-search');
+  const abonoInput = document.getElementById('mov-abono-parcial');
+  if (!cliInput || !abonoInput) return;
+  const matched = findClientByComposite(cliInput.value.trim());
+  if (!matched) return;
+  const deuda = getClientBalance(matched);
+  abonoInput.value = deuda > 0 ? deuda : 0;
+  updateMovClientBalanceNotice();
+}
+
+function updateAbonoParcialVisibility() {
+  const tipoEl = document.getElementById('mov-tipo');
+  const abonoParcialGroup = document.getElementById('abono-parcial-group');
+  const abonoLabel = document.getElementById('mov-abono-parcial-label');
+  const fillBtn = document.getElementById('btn-fill-deuda-previa');
+  if (!tipoEl || !abonoParcialGroup) return;
+
+  const tipo = normalizeOpType(tipoEl.value);
+  const rawCli = (document.getElementById('mov-cliente-search')?.value || '').trim();
+  const matched = (!rawCli || isAnonymousClientName(rawCli)) ? null : findClientByComposite(rawCli);
+  const deudaActual = matched ? getClientBalance(matched) : 0;
+  const hasRealClient = Boolean(rawCli && !isAnonymousClientName(rawCli));
+
+  if (tipo === 'VENTA A CREDITO') {
+    abonoParcialGroup.style.display = 'block';
+    if (abonoLabel) abonoLabel.textContent = 'Abono / Entrega simultánea ($ - opcional)';
+    if (fillBtn) {
+      if (deudaActual > 0) {
+        fillBtn.style.display = 'inline-block';
+        fillBtn.textContent = `⚡ Saldar deuda (${fmtMoney(deudaActual)})`;
+      } else {
+        fillBtn.style.display = 'none';
+      }
+    }
+  } else if (tipo === 'VENTA CONTADO' && hasRealClient) {
+    abonoParcialGroup.style.display = 'block';
+    if (abonoLabel) abonoLabel.textContent = 'Abono a deuda previa ($ - opcional)';
+    if (fillBtn) {
+      if (deudaActual > 0) {
+        fillBtn.style.display = 'inline-block';
+        fillBtn.textContent = `⚡ Saldar deuda (${fmtMoney(deudaActual)})`;
+      } else {
+        fillBtn.style.display = 'none';
+      }
+    }
+  } else {
+    abonoParcialGroup.style.display = 'none';
+    if (fillBtn) fillBtn.style.display = 'none';
+  }
 }
 
 function updateMovClientBalanceNotice() {
@@ -1412,37 +1570,84 @@ function updateMovClientBalanceNotice() {
   const tipo = normalizeOpType(tipoEl.value);
   const rawCli = cliInput.value.trim();
 
-  if (tipo !== 'ABONO / PAGO' || !rawCli || isAnonymousClientName(rawCli)) {
+  if (!rawCli || isAnonymousClientName(rawCli) || tipo === 'PEDIDO') {
     noticeEl.style.display = 'none';
     noticeEl.textContent = '';
     return;
   }
 
   const matched = findClientByComposite(rawCli);
-  if (!matched) {
-    noticeEl.style.display = 'none';
-    noticeEl.textContent = '';
+  const deudaActual = matched ? getClientBalance(matched) : 0;
+  const monto = Number(document.getElementById('mov-monto')?.value) || 0;
+  const abonoParcial = Number(document.getElementById('mov-abono-parcial')?.value) || 0;
+
+  if (tipo === 'ABONO / PAGO') {
+    if (!matched) {
+      noticeEl.style.display = 'none';
+      noticeEl.textContent = '';
+      return;
+    }
+    if (deudaActual === 0) {
+      if (monto > 0) {
+        noticeEl.textContent = `⚠️ El cliente ya está al día ($0). Deuda saldada en $0. Sobrante de ${fmtMoney(monto)}.`;
+      } else {
+        noticeEl.textContent = `✅ El cliente está al día (saldo $0).`;
+      }
+      noticeEl.style.display = 'block';
+    } else if (monto > deudaActual) {
+      const sobrante = monto - deudaActual;
+      noticeEl.textContent = `⚠️ Deuda actual: ${fmtMoney(deudaActual)}. Al guardar: Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}.`;
+      noticeEl.style.display = 'block';
+    } else {
+      const restante = Math.max(0, deudaActual - monto);
+      noticeEl.textContent = monto > 0
+        ? `💳 Deuda actual: ${fmtMoney(deudaActual)} → Nuevo saldo: ${fmtMoney(restante)}.`
+        : `💳 Deuda actual del cliente: ${fmtMoney(deudaActual)}.`;
+      noticeEl.style.display = 'block';
+    }
     return;
   }
 
-  const saldoActual = getClientBalance(matched);
-  const montoAbono = Number(document.getElementById('mov-monto')?.value) || 0;
-
-  if (saldoActual <= 0) {
-    const nuevoSaldo = saldoActual - montoAbono;
-    const extra = montoAbono > 0
-      ? ` (Saldo actual: ${fmtSignedMoney(saldoActual)} → Nuevo Saldo a favor: ${fmtSignedMoney(nuevoSaldo)})`
-      : '';
-    noticeEl.textContent = `💚 El cliente no tiene deuda; este pago quedará como saldo a favor.${extra}`;
-    noticeEl.style.display = 'block';
-  } else if (montoAbono > saldoActual) {
-    const excedente = montoAbono - saldoActual;
-    noticeEl.textContent = `💚 El abono supera la deuda actual (${fmtMoney(saldoActual)}); quedarán ${fmtMoney(excedente)} como saldo a favor.`;
-    noticeEl.style.display = 'block';
-  } else {
-    noticeEl.style.display = 'none';
-    noticeEl.textContent = '';
+  if (tipo === 'VENTA CONTADO') {
+    if (deudaActual > 0 || abonoParcial > 0) {
+      const abonoAplicado = Math.min(abonoParcial, deudaActual);
+      const sobrante = Math.max(0, abonoParcial - deudaActual);
+      const deudaRestante = Math.max(0, deudaActual - abonoAplicado);
+      const totalHoy = monto + abonoAplicado;
+      let msg = `💳 Deuda previa: ${fmtMoney(deudaActual)} · Abono aplicado: ${fmtMoney(abonoAplicado)} → Saldo restante: ${fmtMoney(deudaRestante)} · Compra contado: ${fmtMoney(monto)} (Total hoy: ${fmtMoney(totalHoy)}).`;
+      if (sobrante > 0) {
+        msg += ` Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}.`;
+      }
+      noticeEl.textContent = msg;
+      noticeEl.style.display = 'block';
+    } else {
+      noticeEl.style.display = 'none';
+      noticeEl.textContent = '';
+    }
+    return;
   }
+
+  if (tipo === 'VENTA A CREDITO') {
+    if (deudaActual > 0 || abonoParcial > 0) {
+      const subtotal = deudaActual + monto;
+      const abonoAplicado = Math.min(abonoParcial, subtotal);
+      const sobrante = Math.max(0, abonoParcial - subtotal);
+      const nuevoSaldo = Math.max(0, subtotal - abonoAplicado);
+      let msg = `💳 Deuda previa: ${fmtMoney(deudaActual)} + Venta crédito: ${fmtMoney(monto)} = ${fmtMoney(subtotal)} - Abono: ${fmtMoney(abonoAplicado)} → Nuevo saldo: ${fmtMoney(nuevoSaldo)}.`;
+      if (sobrante > 0) {
+        msg += ` Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}.`;
+      }
+      noticeEl.textContent = msg;
+      noticeEl.style.display = 'block';
+    } else {
+      noticeEl.style.display = 'none';
+      noticeEl.textContent = '';
+    }
+    return;
+  }
+
+  noticeEl.style.display = 'none';
+  noticeEl.textContent = '';
 }
 
 function openClientModalFromSale() {
@@ -1460,6 +1665,31 @@ function openClientModalFromSale() {
   }
 }
 
+function resetMovementForm() {
+  const form = document.getElementById('mov-form');
+  if (form) form.reset();
+  currentCart = [];
+  renderCart();
+  lastDetectedOrder = null;
+  if (document.getElementById('mov-fecha')) document.getElementById('mov-fecha').value = todayISO();
+  if (document.getElementById('mov-tipo')) document.getElementById('mov-tipo').value = 'VENTA A CREDITO';
+  if (document.getElementById('mov-cliente-search')) document.getElementById('mov-cliente-search').value = '';
+  if (document.getElementById('prod-pick-search')) document.getElementById('prod-pick-search').value = '';
+  if (document.getElementById('prod-pick-qty')) document.getElementById('prod-pick-qty').value = 1;
+  if (document.getElementById('mov-monto')) document.getElementById('mov-monto').value = '';
+  if (document.getElementById('mov-medio')) document.getElementById('mov-medio').value = 'EFECTIVO';
+  if (document.getElementById('mov-abono-parcial')) document.getElementById('mov-abono-parcial').value = '';
+  if (document.getElementById('mov-detalle')) document.getElementById('mov-detalle').value = '';
+  if (document.getElementById('mov-obs')) document.getElementById('mov-obs').value = '';
+  if (document.getElementById('voice-input')) document.getElementById('voice-input').value = '';
+  const banner = document.getElementById('detected-order-banner');
+  if (banner) banner.style.display = 'none';
+  dismissQuickSinglePreview();
+  toggleProductPicker();
+  hideMovClientAlert();
+  updateMovClientBalanceNotice();
+}
+
 /* --- CARRITO DE PRODUCTOS Y DESCUENTO AUTOMÁTICO DE STOCK --- */
 function toggleProductPicker() {
   const tipo = normalizeOpType(document.getElementById('mov-tipo').value);
@@ -1467,10 +1697,7 @@ function toggleProductPicker() {
   const isContado = tipo === 'VENTA CONTADO';
 
   document.getElementById('product-picker-box').style.display = isAbono ? 'none' : 'block';
-  const abonoParcialGroup = document.getElementById('abono-parcial-group');
-  if (abonoParcialGroup) {
-    abonoParcialGroup.style.display = (tipo === 'VENTA A CREDITO') ? 'block' : 'none';
-  }
+  updateAbonoParcialVisibility();
 
   const cliInput = document.getElementById('mov-cliente-search');
   const cliLabel = document.getElementById('mov-cliente-label');
@@ -1499,6 +1726,7 @@ function fillConsumidorFinal() {
     cliInput.value = CONSUMIDOR_FINAL_COMPOSITE;
   }
   hideMovClientAlert();
+  updateAbonoParcialVisibility();
   updateMovClientBalanceNotice();
   showToast('⚡ Listo: Venta Rápida / Consumidor Final');
 }
@@ -2507,41 +2735,69 @@ async function saveAllBatchOperations() {
 
       const finalBarberia = isAnonymousClientName(barberia) ? CONSUMIDOR_FINAL_BARBERIA : barberia.toUpperCase();
       const finalBarbero = isAnonymousClientName(barberia) ? '' : barbero.toUpperCase();
+      const matchedBatchCli = (finalBarberia && !isAnonymousClientName(finalBarberia))
+        ? findClientByComposite(finalBarbero ? `${finalBarberia} | ${finalBarbero}` : finalBarberia)
+        : null;
+      const prevDebt = matchedBatchCli ? getClientBalance(matchedBatchCli) : 0;
 
-      db.movs.push({
-        id: 'MOV-' + (Date.now() + index),
-        fecha,
-        barberia: finalBarberia,
-        barbero: finalBarbero,
-        zona: resolvedZona,
-        tipo: normOpTipo,
-        detalle: detalleText,
-        medio: op.medio || 'EFECTIVO',
-        monto: op.totalCalculado,
-        items: op.resolvedItems,
-        obs: op.notas || ''
-      });
-
-      if (normOpTipo === 'VENTA A CREDITO' && Number(op.abonoParcial) > 0) {
+      if (normOpTipo === 'ABONO / PAGO') {
+        const applied = Math.min(op.totalCalculado, prevDebt);
+        const sobrante = Math.max(0, op.totalCalculado - prevDebt);
+        if (applied > 0) {
+          db.movs.push({
+            id: 'MOV-' + (Date.now() + index),
+            fecha,
+            barberia: finalBarberia,
+            barbero: finalBarbero,
+            zona: resolvedZona,
+            tipo: normOpTipo,
+            detalle: detalleText,
+            medio: op.medio || 'EFECTIVO',
+            monto: applied,
+            items: [],
+            obs: sobrante > 0 ? `${op.notas ? op.notas + ' · ' : ''}Sobrante: ${fmtMoney(sobrante)}` : (op.notas || '')
+          });
+        }
+      } else {
         db.movs.push({
-          id: 'MOV-' + (Date.now() + index + 500),
+          id: 'MOV-' + (Date.now() + index),
           fecha,
           barberia: finalBarberia,
           barbero: finalBarbero,
           zona: resolvedZona,
-          tipo: 'ABONO / PAGO',
-          detalle: 'Entrega a cuenta',
-          medio: op.medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : (op.medio || 'EFECTIVO'),
-          monto: Number(op.abonoParcial),
-          obs: ''
+          tipo: normOpTipo,
+          detalle: detalleText,
+          medio: op.medio || 'EFECTIVO',
+          monto: op.totalCalculado,
+          items: op.resolvedItems,
+          obs: op.notas || ''
         });
+
+        if ((normOpTipo === 'VENTA A CREDITO' || normOpTipo === 'VENTA CONTADO') && Number(op.abonoParcial) > 0 && !isAnonymousClientName(finalBarberia)) {
+          const baseAvailable = normOpTipo === 'VENTA A CREDITO' ? (prevDebt + op.totalCalculado) : prevDebt;
+          const appliedAbono = Math.min(Number(op.abonoParcial), baseAvailable);
+          if (appliedAbono > 0) {
+            db.movs.push({
+              id: 'MOV-' + (Date.now() + index + 500),
+              fecha,
+              barberia: finalBarberia,
+              barbero: finalBarbero,
+              zona: resolvedZona,
+              tipo: 'ABONO / PAGO',
+              detalle: normOpTipo === 'VENTA CONTADO' ? 'Abono a deuda previa' : 'Entrega a cuenta',
+              medio: op.medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : (op.medio || 'EFECTIVO'),
+              monto: appliedAbono,
+              obs: ''
+            });
+          }
+        }
       }
     }
   });
 
   const count = pendingBatchOps.length;
   closeBatchReview();
-  document.getElementById('voice-input').value = '';
+  resetMovementForm();
   const dropHint = document.getElementById('drop-hint-text');
   if (dropHint) dropHint.innerHTML = '1 cliente = carga instantánea · Varios = lista editable';
 
@@ -2584,6 +2840,9 @@ function applyParsedCommandToForm(parsed) {
     if (parsed.notas) document.getElementById('mov-detalle').value = parsed.notas;
   }
 
+  updateAbonoParcialVisibility();
+  updateMovClientBalanceNotice();
+
   const banner = document.getElementById('detected-order-banner');
   if (normTipo === 'PEDIDO') {
     lastDetectedOrder = parsed;
@@ -2618,15 +2877,7 @@ async function saveDetectedOrder() {
     notas: document.getElementById('mov-obs').value.trim()
   });
 
-  document.getElementById('detected-order-banner').style.display = 'none';
-  dismissQuickSinglePreview();
-  lastDetectedOrder = null;
-  currentCart = [];
-  renderCart();
-  document.getElementById('voice-input').value = '';
-  document.getElementById('mov-monto').value = '';
-  document.getElementById('mov-detalle').value = '';
-  document.getElementById('mov-obs').value = '';
+  resetMovementForm();
   await persistData();
   showToast('📦 Pedido guardado');
 }
@@ -2769,10 +3020,12 @@ async function saveMovement(e) {
 
     const resolvedZona = resolveOperationZona({ barberia, barbero, cliente: rawCli });
 
-    const monto = Number(document.getElementById('mov-monto').value) || 0;
-    const abonoParcial = Number(document.getElementById('mov-abono-parcial').value) || 0;
-    const fecha = document.getElementById('mov-fecha').value;
+    const monto = Math.max(0, Number(document.getElementById('mov-monto').value) || 0);
+    const abonoParcial = Math.max(0, Number(document.getElementById('mov-abono-parcial').value) || 0);
+    const fecha = document.getElementById('mov-fecha').value || todayISO();
     const medio = document.getElementById('mov-medio').value;
+    const detalleInput = document.getElementById('mov-detalle').value.trim();
+    const obsInput = document.getElementById('mov-obs').value.trim();
 
     if (tipo === 'PEDIDO') {
       const matched = findClientByComposite(rawCli);
@@ -2783,80 +3036,155 @@ async function saveMovement(e) {
         zona: resolvedZona,
         ruta: matched ? (matched.ruta || 'A DEFINIR') : 'A DEFINIR',
         items: [...currentCart],
-        detalleManual: currentCart.length ? '' : document.getElementById('mov-detalle').value.trim(),
+        detalleManual: currentCart.length ? '' : detalleInput,
         totalEstimado: monto,
         sena: 0,
         estado: 'PENDIENTE',
         stockDeducted: false,
-        notas: document.getElementById('mov-obs').value.trim()
+        notas: obsInput
       });
 
-      currentCart = [];
-      renderCart();
-      document.getElementById('mov-monto').value = '';
-      document.getElementById('mov-detalle').value = '';
-      document.getElementById('mov-obs').value = '';
-      document.getElementById('voice-input').value = '';
-      dismissQuickSinglePreview();
-      updateMovClientBalanceNotice();
+      resetMovementForm();
+      showMovLastFeedback('📦 Pedido guardado correctamente.');
       await persistData();
       showToast('📦 Pedido guardado');
       return;
     }
 
-    if (currentCart.length && tipo !== 'ABONO / PAGO') {
-      currentCart.forEach(item => {
-        const invItem = db.inv.find(x => x.codigo === item.codigo);
-        if (invItem) invItem.stock = Number(invItem.stock) - item.qty;
-      });
-    }
-
     const storedBarberia = isAnonContado ? CONSUMIDOR_FINAL_BARBERIA : barberia.toUpperCase();
     const storedBarbero = isAnonContado ? '' : barbero.toUpperCase();
+    const matchedClient = !isAnonContado
+      ? findClientByComposite(storedBarbero ? `${storedBarberia} | ${storedBarbero}` : storedBarberia)
+      : null;
+    const deudaPrevia = matchedClient ? getClientBalance(matchedClient) : 0;
 
-    db.movs.push({
-      id: 'MOV-' + Date.now(),
-      fecha,
-      barberia: storedBarberia,
-      barbero: storedBarbero,
-      zona: resolvedZona,
-      tipo,
-      detalle: document.getElementById('mov-detalle').value.trim() || getOpTypeLabel(tipo),
-      medio,
-      monto,
-      items: [...currentCart],
-      obs: document.getElementById('mov-obs').value.trim()
-    });
+    let feedbackMsg = '✅ Operación guardada correctamente.';
+    let toastMsg = '✅ Operación guardada';
 
-    if (tipo === 'VENTA A CREDITO' && abonoParcial > 0) {
+    if (tipo === 'ABONO / PAGO') {
+      const appliedAbono = Math.min(monto, deudaPrevia);
+      const sobrante = Math.max(0, monto - deudaPrevia);
+
+      if (appliedAbono > 0) {
+        db.movs.push({
+          id: 'MOV-' + Date.now(),
+          fecha,
+          barberia: storedBarberia,
+          barbero: storedBarbero,
+          zona: resolvedZona,
+          tipo: 'ABONO / PAGO',
+          detalle: detalleInput || 'Abono de saldo pendiente',
+          medio,
+          monto: appliedAbono,
+          items: [],
+          obs: sobrante > 0
+            ? `${obsInput ? obsInput + ' · ' : ''}Pago recibido: ${fmtMoney(monto)} · Sobrante: ${fmtMoney(sobrante)}`
+            : obsInput
+        });
+      }
+
+      if (sobrante > 0) {
+        feedbackMsg = `✅ Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}.`;
+        toastMsg = `Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}`;
+      } else {
+        const nuevoSaldo = Math.max(0, deudaPrevia - appliedAbono);
+        feedbackMsg = `✅ Abono registrado (${fmtMoney(appliedAbono)}). Nuevo saldo: ${fmtMoney(nuevoSaldo)}.`;
+        toastMsg = `✅ Abono guardado · Saldo: ${fmtMoney(nuevoSaldo)}`;
+      }
+    } else {
+      if (currentCart.length) {
+        currentCart.forEach(item => {
+          const invItem = db.inv.find(x => x.codigo === item.codigo);
+          if (invItem) invItem.stock = Number(invItem.stock) - item.qty;
+        });
+      }
+
       db.movs.push({
-        id: 'MOV-' + (Date.now() + 1),
+        id: 'MOV-' + Date.now(),
         fecha,
         barberia: storedBarberia,
         barbero: storedBarbero,
         zona: resolvedZona,
-        tipo: 'ABONO / PAGO',
-        detalle: 'Entrega a cuenta',
-        medio: medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : medio,
-        monto: abonoParcial,
-        obs: ''
+        tipo,
+        detalle: detalleInput || getOpTypeLabel(tipo),
+        medio,
+        monto,
+        items: [...currentCart],
+        obs: obsInput
       });
+
+      if (tipo === 'VENTA CONTADO') {
+        if (abonoParcial > 0 && !isAnonContado) {
+          const appliedAbono = Math.min(abonoParcial, deudaPrevia);
+          const sobrante = Math.max(0, abonoParcial - deudaPrevia);
+
+          if (appliedAbono > 0) {
+            db.movs.push({
+              id: 'MOV-' + (Date.now() + 1),
+              fecha,
+              barberia: storedBarberia,
+              barbero: storedBarbero,
+              zona: resolvedZona,
+              tipo: 'ABONO / PAGO',
+              detalle: 'Abono a deuda previa (junto con compra de contado)',
+              medio: medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : medio,
+              monto: appliedAbono,
+              items: [],
+              obs: sobrante > 0 ? `Sobrante: ${fmtMoney(sobrante)}` : ''
+            });
+          }
+
+          const nuevoSaldo = Math.max(0, deudaPrevia - appliedAbono);
+          if (sobrante > 0) {
+            feedbackMsg = `✅ Compra de contado (${fmtMoney(monto)}) registrada. Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}.`;
+            toastMsg = `Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}`;
+          } else {
+            feedbackMsg = `✅ Compra de contado (${fmtMoney(monto)}) + abono (${fmtMoney(appliedAbono)}) registrados. Nuevo saldo: ${fmtMoney(nuevoSaldo)}.`;
+            toastMsg = `✅ Venta + abono guardados · Saldo: ${fmtMoney(nuevoSaldo)}`;
+          }
+        } else {
+          feedbackMsg = `✅ Venta de contado (${fmtMoney(monto)}) registrada.`;
+        }
+      } else if (tipo === 'VENTA A CREDITO') {
+        const saldoTrasVenta = deudaPrevia + monto;
+        if (abonoParcial > 0) {
+          const appliedAbono = Math.min(abonoParcial, saldoTrasVenta);
+          const sobrante = Math.max(0, abonoParcial - saldoTrasVenta);
+
+          if (appliedAbono > 0) {
+            db.movs.push({
+              id: 'MOV-' + (Date.now() + 1),
+              fecha,
+              barberia: storedBarberia,
+              barbero: storedBarbero,
+              zona: resolvedZona,
+              tipo: 'ABONO / PAGO',
+              detalle: 'Entrega a cuenta',
+              medio: medio === 'CUENTA CORRIENTE' ? 'EFECTIVO' : medio,
+              monto: appliedAbono,
+              items: [],
+              obs: sobrante > 0 ? `Sobrante: ${fmtMoney(sobrante)}` : ''
+            });
+          }
+
+          const nuevoSaldo = Math.max(0, saldoTrasVenta - appliedAbono);
+          if (sobrante > 0) {
+            feedbackMsg = `✅ Venta a crédito (${fmtMoney(monto)}) + abono registrados. Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}.`;
+            toastMsg = `Deuda saldada en $0. Sobrante de ${fmtMoney(sobrante)}`;
+          } else {
+            feedbackMsg = `✅ Venta a crédito (${fmtMoney(monto)}) - abono (${fmtMoney(appliedAbono)}). Nuevo saldo pendiente: ${fmtMoney(nuevoSaldo)}.`;
+            toastMsg = `✅ Crédito + abono guardados · Saldo: ${fmtMoney(nuevoSaldo)}`;
+          }
+        } else {
+          feedbackMsg = `✅ Venta a crédito (${fmtMoney(monto)}) registrada. Nuevo saldo pendiente: ${fmtMoney(saldoTrasVenta)}.`;
+        }
+      }
     }
 
-    currentCart = [];
-    renderCart();
-    document.getElementById('mov-monto').value = '';
-    document.getElementById('mov-abono-parcial').value = '';
-    document.getElementById('mov-detalle').value = '';
-    document.getElementById('mov-obs').value = '';
-    document.getElementById('voice-input').value = '';
-    dismissQuickSinglePreview();
-    if (isAnonContado) {
-      document.getElementById('mov-cliente-search').value = '';
-    }
-    updateMovClientBalanceNotice();
+    resetMovementForm();
+    showMovLastFeedback(feedbackMsg);
     await persistData();
-    showToast('✅ Operación guardada');
+    showToast(toastMsg);
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -2884,6 +3212,19 @@ function setReportZoneFilter(zone) {
   activeReportZone = (activeReportZone === cleanZone && cleanZone !== 'TODAS') ? 'TODAS' : cleanZone;
   const sel = document.getElementById('report-zone-filter');
   if (sel) sel.value = activeReportZone;
+  renderMovements();
+}
+
+function resetMovementsFilters() {
+  const searchEl = document.getElementById('movs-history-search');
+  if (searchEl) searchEl.value = '';
+  const typeEl = document.getElementById('movs-type-filter');
+  if (typeEl) typeEl.value = 'TODOS';
+  const rangeChk = document.getElementById('filter-movs-by-range');
+  if (rangeChk) rangeChk.checked = false;
+  activeReportZone = 'TODAS';
+  const zoneSel = document.getElementById('report-zone-filter');
+  if (zoneSel) zoneSel.value = 'TODAS';
   renderMovements();
 }
 
@@ -3098,7 +3439,19 @@ function renderMovements() {
 function setOrderFilter(status, btn) {
   activeOrderFilter = status;
   document.querySelectorAll('#order-status-filters .chip').forEach(c => c.classList.remove('active'));
-  btn.classList.add('active');
+  if (btn) btn.classList.add('active');
+  renderOrders();
+}
+
+function resetOrderFilters() {
+  const searchEl = document.getElementById('order-search');
+  if (searchEl) searchEl.value = '';
+  activeOrderFilter = 'TODOS';
+  const chips = document.querySelectorAll('#order-status-filters .chip');
+  chips.forEach(c => {
+    const isAll = (c.getAttribute('onclick') || '').includes("'TODOS'");
+    c.classList.toggle('active', isAll);
+  });
   renderOrders();
 }
 
@@ -3177,11 +3530,20 @@ function renderOrders() {
   }).join('') : `<tr><td colspan="6" class="text-center muted" style="padding:24px;">No hay pedidos en este estado.</td></tr>`;
 }
 
+function resetQuickOrderForm() {
+  const form = document.getElementById('quick-order-form');
+  if (form) form.reset();
+  if (document.getElementById('quick-order-cli')) document.getElementById('quick-order-cli').value = '';
+  if (document.getElementById('quick-order-detail')) document.getElementById('quick-order-detail').value = '';
+  if (document.getElementById('quick-order-total')) document.getElementById('quick-order-total').value = 0;
+  if (document.getElementById('quick-order-nota')) document.getElementById('quick-order-nota').value = '';
+}
+
 async function saveQuickOrder(e) {
   e.preventDefault();
   const rawCli = document.getElementById('quick-order-cli').value.trim();
   const detail = document.getElementById('quick-order-detail').value.trim();
-  const total = Number(document.getElementById('quick-order-total').value) || 0;
+  const total = Math.max(0, Number(document.getElementById('quick-order-total').value) || 0);
   const nota = document.getElementById('quick-order-nota').value.trim();
   const matched = findClientByComposite(rawCli);
   const matchedItems = matchInventoryItemsFromLine(detail);
@@ -3201,10 +3563,7 @@ async function saveQuickOrder(e) {
     notas: nota
   });
 
-  document.getElementById('quick-order-cli').value = '';
-  document.getElementById('quick-order-detail').value = '';
-  document.getElementById('quick-order-total').value = 0;
-  document.getElementById('quick-order-nota').value = '';
+  resetQuickOrderForm();
   await persistData();
   showToast('📦 Pedido guardado');
 }
@@ -3308,16 +3667,22 @@ function renderClients() {
   const zonaFilter = document.getElementById('cli-filter-zona')?.value || 'TODAS';
   const barberoFilter = document.getElementById('cli-filter-barbero')?.value || 'TODOS';
 
-  const resetBtn = document.getElementById('cli-filter-reset');
-  if (resetBtn) {
-    const hasActive = Boolean(q) || estadoFilter !== 'TODOS' || zonaFilter !== 'TODAS' || barberoFilter !== 'TODOS';
-    resetBtn.style.display = hasActive ? 'inline-flex' : 'none';
-  }
-
   const withBalance = (db.clients || []).map(c => ({
     ...c,
-    saldoActual: getClientBalance(c)
+    saldoActual: Math.max(0, getClientBalance(c))
   }));
+
+  let conDeudaCount = 0;
+  let sinDeudaCount = 0;
+  withBalance.forEach(c => {
+    if (c.saldoActual > 0) conDeudaCount++;
+    else if (c.saldoActual === 0) sinDeudaCount++;
+  });
+
+  const conDeudaEl = document.getElementById('cli-count-con-deuda');
+  const sinDeudaEl = document.getElementById('cli-count-sin-deuda');
+  if (conDeudaEl) conDeudaEl.textContent = String(conDeudaCount);
+  if (sinDeudaEl) sinDeudaEl.textContent = String(sinDeudaCount);
 
   const filtered = withBalance.filter(c => {
     const matchesText = !q ||
@@ -3342,20 +3707,15 @@ function renderClients() {
   });
 
   let totalAdeudadoSeleccion = 0;
-  let totalFavorSeleccion = 0;
   filtered.forEach(c => {
     if (c.saldoActual > 0) totalAdeudadoSeleccion += c.saldoActual;
-    else if (c.saldoActual < 0) totalFavorSeleccion += Math.abs(c.saldoActual);
   });
 
   const summaryEl = document.getElementById('cli-filter-summary');
   if (summaryEl) {
-    const favorHtml = totalFavorSeleccion > 0
-      ? ` <span class="muted">·</span> Saldo a favor: <strong class="text-green">${fmtMoney(totalFavorSeleccion)}</strong>`
-      : '';
     summaryEl.innerHTML = `
       <span>Mostrando <strong>${filtered.length}</strong> de <strong>${db.clients.length}</strong> clientes</span>
-      <span>Total adeudado de la selección: <strong class="text-amber">${fmtMoney(totalAdeudadoSeleccion)}</strong>${favorHtml}</span>
+      <span>Total adeudado de la selección: <strong class="text-amber">${fmtMoney(totalAdeudadoSeleccion)}</strong></span>
     `;
   }
 
@@ -3363,20 +3723,10 @@ function renderClients() {
   if (!tbody) return;
 
   tbody.innerHTML = filtered.length ? filtered.map(c => {
-    const saldo = c.saldoActual;
-    let saldoCellHtml = '';
-    if (saldo > 0) {
-      saldoCellHtml = `<td class="text-right font-bold text-amber">${fmtMoney(saldo)}</td>`;
-    } else if (saldo < 0) {
-      saldoCellHtml = `
-        <td class="text-right">
-          <div><span class="saldo-favor-pill">Saldo a favor</span></div>
-          <div class="font-bold text-green">${fmtSignedMoney(saldo)}</div>
-        </td>
-      `;
-    } else {
-      saldoCellHtml = `<td class="text-right font-bold text-green">$0</td>`;
-    }
+    const saldo = Math.max(0, c.saldoActual);
+    const saldoCellHtml = saldo > 0
+      ? `<td class="text-right font-bold text-amber">${fmtMoney(saldo)}</td>`
+      : `<td class="text-right font-bold text-green">$0</td>`;
 
     return `
       <tr>
@@ -3415,20 +3765,31 @@ function updateClientModalDebtPreview() {
   }
 
   const prevSaldo = getClientBalance(c);
-  const movsNet = getClientMovementsNet(c);
-  const inputDeudaBase = Number(document.getElementById('cli-deuda')?.value) || 0;
-  const nuevoSaldo = inputDeudaBase + movsNet;
+  const inputDeudaBase = Math.max(0, Number(document.getElementById('cli-deuda')?.value) || 0);
+  const nuevoSaldo = computeClientBalanceWithBase(c, inputDeudaBase);
 
-  const prevClass = prevSaldo < 0 ? 'text-green' : (prevSaldo > 0 ? 'text-amber' : 'text-green');
-  const prevTag = prevSaldo < 0 ? ' (Saldo a favor)' : '';
-  const newClass = nuevoSaldo < 0 ? 'text-green' : (nuevoSaldo > 0 ? 'text-amber' : 'text-green');
-  const newTag = nuevoSaldo < 0 ? ' (Saldo a favor)' : '';
+  const prevClass = prevSaldo > 0 ? 'text-amber' : 'text-green';
+  const newClass = nuevoSaldo > 0 ? 'text-amber' : 'text-green';
 
   hintEl.innerHTML = `
-    <div>Saldo previo total: <strong class="${prevClass}">${fmtSignedMoney(prevSaldo)}${prevTag}</strong></div>
-    <div>Nuevo saldo resultante: <strong class="${newClass}">${fmtSignedMoney(nuevoSaldo)}${newTag}</strong></div>
+    <div>Saldo previo total: <strong class="${prevClass}">${fmtMoney(prevSaldo)}</strong></div>
+    <div>Nuevo saldo resultante: <strong class="${newClass}">${fmtMoney(nuevoSaldo)}</strong></div>
   `;
   hintEl.style.display = 'block';
+}
+
+function resetClientModalForm() {
+  const form = document.getElementById('client-form');
+  if (form) form.reset();
+  ['edit-cli-id','cli-barberia','cli-barbero','cli-zona','cli-tel','cli-dir','cli-notas'].forEach(k => {
+    const el = document.getElementById(k);
+    if (el) el.value = '';
+  });
+  if (document.getElementById('cli-ruta')) document.getElementById('cli-ruta').value = 'LUNES / VIERNES';
+  if (document.getElementById('cli-cat')) document.getElementById('cli-cat').value = 'DIAMOND';
+  if (document.getElementById('cli-deuda')) document.getElementById('cli-deuda').value = 0;
+  const hintEl = document.getElementById('cli-deuda-prev-info');
+  if (hintEl) hintEl.style.display = 'none';
 }
 
 function openClientModal(id = null) {
@@ -3445,15 +3806,12 @@ function openClientModal(id = null) {
     document.getElementById('cli-tel').value = c.telefono;
     document.getElementById('cli-cat').value = c.categoria || 'PLATA';
     document.getElementById('cli-dir').value = c.direccion;
-    document.getElementById('cli-deuda').value = Number(c.deudaBase) || 0;
+    document.getElementById('cli-deuda').value = Math.max(0, Number(c.deudaBase) || 0);
     document.getElementById('cli-notas').value = c.notas || '';
     updateClientModalDebtPreview();
   } else {
     document.getElementById('client-modal-title').textContent = 'Nuevo Cliente';
-    ['edit-cli-id','cli-barberia','cli-barbero','cli-zona','cli-tel','cli-dir','cli-notas'].forEach(k => document.getElementById(k).value = '');
-    document.getElementById('cli-deuda').value = 0;
-    const hintEl = document.getElementById('cli-deuda-prev-info');
-    if (hintEl) hintEl.style.display = 'none';
+    resetClientModalForm();
   }
 }
 
@@ -3472,8 +3830,7 @@ function openDeudaBaseModal(clientId = null) {
 
   sel.innerHTML = sortedClients.map(c => {
     const saldo = getClientBalance(c);
-    const labelSaldo = saldo < 0 ? `Saldo a favor ${fmtSignedMoney(saldo)}` : fmtSignedMoney(saldo);
-    return `<option value="${escapeAttr(c.id)}">${escapeAttr(c.barberia)} | ${escapeAttr(c.barbero)} (${labelSaldo})</option>`;
+    return `<option value="${escapeAttr(c.id)}">${escapeAttr(c.barberia)} | ${escapeAttr(c.barbero)} (${fmtMoney(saldo)})</option>`;
   }).join('');
 
   if (clientId && sortedClients.some(c => c.id === clientId)) {
@@ -3510,17 +3867,23 @@ function updateDeudaBaseModalPreview() {
   }
 
   const saldoPrevio = getClientBalance(c);
-  const nuevoSaldo = Number(montoInput.value) || 0;
-  const prevClass = saldoPrevio < 0 ? 'text-green' : (saldoPrevio > 0 ? 'text-amber' : 'text-green');
-  const prevTag = saldoPrevio < 0 ? ' (Saldo a favor)' : '';
-  const newClass = nuevoSaldo < 0 ? 'text-green' : (nuevoSaldo > 0 ? 'text-amber' : 'text-green');
-  const newTag = nuevoSaldo < 0 ? ' (Saldo a favor)' : '';
+  const nuevoSaldo = Math.max(0, Number(montoInput.value) || 0);
+  const prevClass = saldoPrevio > 0 ? 'text-amber' : 'text-green';
+  const newClass = nuevoSaldo > 0 ? 'text-amber' : 'text-green';
 
   hintEl.innerHTML = `
-    <div>Saldo previo: <strong class="${prevClass}">${fmtSignedMoney(saldoPrevio)}${prevTag}</strong></div>
-    <div>Nuevo saldo al guardar: <strong class="${newClass}">${fmtSignedMoney(nuevoSaldo)}${newTag}</strong></div>
+    <div>Saldo previo: <strong class="${prevClass}">${fmtMoney(saldoPrevio)}</strong></div>
+    <div>Nuevo saldo al guardar: <strong class="${newClass}">${fmtMoney(nuevoSaldo)}</strong></div>
   `;
   hintEl.style.display = 'block';
+}
+
+function resetDeudaBaseModalForm() {
+  const form = document.getElementById('deuda-base-form');
+  if (form) form.reset();
+  if (document.getElementById('db-client-monto')) document.getElementById('db-client-monto').value = '';
+  const hintEl = document.getElementById('db-client-prev-info');
+  if (hintEl) hintEl.style.display = 'none';
 }
 
 async function saveDeudaBaseModal(e) {
@@ -3532,10 +3895,58 @@ async function saveDeudaBaseModal(e) {
   const c = db.clients.find(x => x.id === sel.value);
   if (!c) return;
 
-  const targetSaldo = Number(montoInput.value) || 0;
-  const movsNet = getClientMovementsNet(c);
-  c.deudaBase = targetSaldo - movsNet;
+  const targetSaldo = Math.max(0, Number(montoInput.value) || 0);
+  const currentSaldo = getClientBalance(c);
 
+  if (targetSaldo > currentSaldo) {
+    const diff = targetSaldo - currentSaldo;
+    const candidateBase = Math.max(0, Number(c.deudaBase) || 0) + diff;
+    if (computeClientBalanceWithBase(c, candidateBase) === targetSaldo) {
+      c.deudaBase = candidateBase;
+    } else {
+      c.deudaBase = candidateBase;
+      const after = getClientBalance(c);
+      if (after < targetSaldo) {
+        db.movs.push({
+          id: 'MOV-' + Date.now(),
+          fecha: todayISO(),
+          barberia: (c.barberia || '').trim().toUpperCase(),
+          barbero: (c.barbero || '').trim().toUpperCase(),
+          zona: normalizeZoneName(c.zona || ''),
+          tipo: 'VENTA A CREDITO',
+          detalle: 'Ajuste de Deuda Base',
+          medio: 'CUENTA CORRIENTE',
+          monto: targetSaldo - after,
+          items: [],
+          obs: 'Ajuste manual desde Deuda Base'
+        });
+      }
+    }
+  } else if (targetSaldo < currentSaldo) {
+    const diff = currentSaldo - targetSaldo;
+    const currentBase = Math.max(0, Number(c.deudaBase) || 0);
+    const baseReduction = Math.min(currentBase, diff);
+    c.deudaBase = Math.max(0, currentBase - baseReduction);
+    const afterBaseUpdate = getClientBalance(c);
+    const remainingDiff = afterBaseUpdate - targetSaldo;
+    if (remainingDiff > 0) {
+      db.movs.push({
+        id: 'MOV-' + Date.now(),
+        fecha: todayISO(),
+        barberia: (c.barberia || '').trim().toUpperCase(),
+        barbero: (c.barbero || '').trim().toUpperCase(),
+        zona: normalizeZoneName(c.zona || ''),
+        tipo: 'ABONO / PAGO',
+        detalle: 'Ajuste de Deuda Base',
+        medio: 'EFECTIVO',
+        monto: remainingDiff,
+        items: [],
+        obs: 'Ajuste manual desde Deuda Base'
+      });
+    }
+  }
+
+  resetDeudaBaseModalForm();
   closeModal('deuda-base-modal');
   await persistData();
   showToast('💳 Deuda base actualizada');
@@ -3553,7 +3964,7 @@ function saveClient(e) {
     telefono: document.getElementById('cli-tel').value.trim(),
     categoria: document.getElementById('cli-cat').value,
     direccion: document.getElementById('cli-dir').value.trim().toUpperCase(),
-    deudaBase: Number(document.getElementById('cli-deuda').value) || 0,
+    deudaBase: Math.max(0, Number(document.getElementById('cli-deuda').value) || 0),
     notas: document.getElementById('cli-notas').value.trim()
   };
   if (id) {
@@ -3565,6 +3976,7 @@ function saveClient(e) {
 
   const fromSale = returnNewClientToSaleForm;
   returnNewClientToSaleForm = false;
+  resetClientModalForm();
   closeModal('client-modal');
   persistData();
 
@@ -3573,6 +3985,7 @@ function saveClient(e) {
     if (cliInput) {
       cliInput.value = `${payload.barberia} | ${payload.barbero}`;
       hideMovClientAlert();
+      updateAbonoParcialVisibility();
       updateMovClientBalanceNotice();
     }
     showToast('✅ Cliente creado y seleccionado en la venta');
@@ -3591,6 +4004,14 @@ function deleteClient(id) {
 }
 
 /* --- INVENTARIO (CREAR, EDITAR Y ELIMINAR) --- */
+function resetInventoryFilters() {
+  const searchEl = document.getElementById('inv-search');
+  if (searchEl) searchEl.value = '';
+  const lowChk = document.getElementById('filter-low-stock');
+  if (lowChk) lowChk.checked = false;
+  renderInventory();
+}
+
 function renderInventory() {
   const q = (document.getElementById('inv-search').value || '').toLowerCase();
   const onlyLow = document.getElementById('filter-low-stock').checked;
@@ -3627,6 +4048,16 @@ function adjustStock(codigo, delta) {
   persistData();
 }
 
+function resetProductModalForm() {
+  const form = document.getElementById('product-form');
+  if (form) form.reset();
+  if (document.getElementById('edit-prod-original-code')) document.getElementById('edit-prod-original-code').value = '';
+  if (document.getElementById('prod-codigo')) document.getElementById('prod-codigo').value = '';
+  if (document.getElementById('prod-nombre')) document.getElementById('prod-nombre').value = '';
+  if (document.getElementById('prod-stock')) document.getElementById('prod-stock').value = 0;
+  if (document.getElementById('prod-venta')) document.getElementById('prod-venta').value = 0;
+}
+
 function openProductModal(codigo = null) {
   document.getElementById('product-modal').style.display = 'flex';
   if (codigo) {
@@ -3640,11 +4071,7 @@ function openProductModal(codigo = null) {
     document.getElementById('prod-venta').value = Number(prod.venta) || 0;
   } else {
     document.getElementById('product-modal-title').textContent = 'Nuevo Artículo de Stock';
-    document.getElementById('edit-prod-original-code').value = '';
-    document.getElementById('prod-codigo').value = '';
-    document.getElementById('prod-nombre').value = '';
-    document.getElementById('prod-stock').value = 10;
-    document.getElementById('prod-venta').value = 6000;
+    resetProductModalForm();
   }
 }
 
@@ -3676,6 +4103,7 @@ function saveProduct(e) {
     showToast('✅ Producto agregado al stock');
   }
 
+  resetProductModalForm();
   closeModal('product-modal');
   persistData();
 }
@@ -3690,7 +4118,18 @@ function deleteProduct(codigo) {
 }
 
 function closeModal(id) {
-  if (id === 'client-modal') returnNewClientToSaleForm = false;
+  if (id === 'client-modal') {
+    returnNewClientToSaleForm = false;
+    resetClientModalForm();
+  } else if (id === 'deuda-base-modal') {
+    resetDeudaBaseModalForm();
+  } else if (id === 'product-modal') {
+    resetProductModalForm();
+  } else if (id === 'task-modal') {
+    resetEditTaskForm();
+  } else if (id === 'edit-op-modal') {
+    resetEditOpModalForm();
+  }
   document.getElementById(id).style.display = 'none';
 }
 

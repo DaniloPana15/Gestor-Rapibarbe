@@ -1520,9 +1520,91 @@ input:focus, select:focus, textarea:focus {
 }
 
 .inline-alert-warn {
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.42);
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  color: #fde68a;
+}
+
+.inline-alert-success {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.45);
   color: #6ee7b7;
+  margin-bottom: 10px;
+}
+
+/* BUSCADORES CON BOTÓN LIMPIAR */
+.search-clear-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-clear-row input[type="text"],
+.search-clear-row input[type="search"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-clear-filter {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid var(--border-subtle);
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.btn-clear-filter:hover {
+  color: #fff;
+  border-color: var(--border-glow);
+  background: var(--blue-soft);
+}
+
+/* TARJETAS DE CONTADORES EN CLIENTES */
+.clients-counters-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.client-counter-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: rgba(8, 12, 24, 0.72);
+  border: 1px solid var(--border-subtle);
+}
+
+.client-counter-card.counter-debt {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.client-counter-card.counter-clean {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.client-counter-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.client-counter-val {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 /* FILTROS AVANZADOS Y RESUMEN EN CLIENTES */
@@ -1552,18 +1634,6 @@ input:focus, select:focus, textarea:focus {
   font-size: 13px;
 }
 
-.saldo-favor-pill {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--green-soft);
-  color: #6ee7b7;
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  margin-bottom: 3px;
-}
-
 .field-hint-box {
   margin-top: 7px;
   padding: 8px 10px;
@@ -1585,7 +1655,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 @media (max-width: 600px) {
+  .clients-counters-grid,
   .clients-filter-bar {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+

@@ -162,8 +162,9 @@
             </div>
           </div>
 
-          <div class="search-bar-inline">
+          <div class="search-bar-inline search-clear-row">
             <input type="text" id="dash-search" placeholder="🔍 Buscar barbería, barbero o zona..." oninput="renderDashboard()" />
+            <button type="button" class="btn-clear-filter" onclick="resetDashboardFilters()">✕ Limpiar</button>
           </div>
 
           <div class="table-wrap">
@@ -217,7 +218,7 @@
             <h2>Nueva Tarea</h2>
           </div>
 
-          <form onsubmit="saveScheduledTask(event)" class="styled-form">
+          <form id="task-form" onsubmit="saveScheduledTask(event)" class="styled-form">
             <div class="form-group">
               <label for="task-titulo">Título *</label>
               <input type="text" id="task-titulo" placeholder="Ej: Llevar pedido / Avisar saldo / Grabar reel" required />
@@ -273,6 +274,11 @@
             </div>
           </div>
 
+          <div class="search-bar-inline search-clear-row">
+            <input type="text" id="task-search" placeholder="🔍 Buscar tarea, cliente o descripción..." oninput="renderAgenda()" />
+            <button type="button" class="btn-clear-filter" onclick="resetTaskFilters()">✕ Limpiar</button>
+          </div>
+
           <div id="scheduled-tasks-list" class="activity-list"></div>
         </div>
       </div>
@@ -321,6 +327,7 @@
           <hr class="divider" />
 
           <h2>Nueva Operación</h2>
+          <div id="mov-last-feedback" class="inline-alert inline-alert-success" style="display:none;"></div>
           <form id="mov-form" onsubmit="saveMovement(event)" class="styled-form">
             <div class="form-row">
               <div class="form-group">
@@ -380,8 +387,11 @@
             </div>
 
             <div class="form-group" id="abono-parcial-group">
-              <label>Entrega parcial ($ - opcional)</label>
-              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="0" />
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                <label id="mov-abono-parcial-label" for="mov-abono-parcial" style="margin-bottom:0;">Abono / Entrega simultánea ($ - opcional)</label>
+                <button type="button" id="btn-fill-deuda-previa" class="btn-sm btn-pay" style="display:none; padding:3px 9px; font-size:11px;" onclick="fillClientPendingDebtIntoAbono()">⚡ Saldar deuda</button>
+              </div>
+              <input type="number" id="mov-abono-parcial" min="0" step="any" placeholder="0" oninput="updateMovClientBalanceNotice()" />
             </div>
 
             <div class="form-row">
@@ -489,9 +499,9 @@
               <h2>Historial</h2>
             </div>
 
-            <div class="search-bar-inline" style="display:flex; gap:8px; flex-wrap:wrap;">
+            <div class="search-bar-inline search-clear-row" style="flex-wrap:wrap;">
               <input type="text" id="movs-history-search" placeholder="🔍 Buscar cliente, zona o detalle..." oninput="renderMovements()" style="flex:1; min-width:180px;" />
-              <select id="movs-type-filter" onchange="renderMovements()" style="width:170px;">
+              <select id="movs-type-filter" onchange="renderMovements()" style="width:160px;">
                 <option value="TODOS">Todos</option>
                 <option value="VENTAS">Ventas</option>
                 <option value="VENTA CONTADO">Contado</option>
@@ -499,6 +509,7 @@
                 <option value="PEDIDO">Pedidos</option>
                 <option value="ABONO / PAGO">Abonos</option>
               </select>
+              <button type="button" class="btn-clear-filter" onclick="resetMovementsFilters()">✕ Limpiar</button>
             </div>
 
             <div class="table-wrap">
@@ -534,8 +545,9 @@
             </div>
           </div>
 
-          <div class="search-bar-inline">
+          <div class="search-bar-inline search-clear-row">
             <input type="text" id="order-search" placeholder="🔍 Buscar pedido, cliente, zona o producto..." oninput="renderOrders()" />
+            <button type="button" class="btn-clear-filter" onclick="resetOrderFilters()">✕ Limpiar</button>
           </div>
 
           <div class="table-wrap">
@@ -560,7 +572,7 @@
             <div class="panel-head">
               <h3>➕ Nuevo Pedido</h3>
             </div>
-            <form onsubmit="saveQuickOrder(event)" class="styled-form">
+            <form id="quick-order-form" onsubmit="saveQuickOrder(event)" class="styled-form">
               <div class="form-group">
                 <label>Cliente</label>
                 <input type="text" id="quick-order-cli" list="clientes-datalist" placeholder="Barbería | Barbero" required />
@@ -597,6 +609,17 @@
           </div>
         </div>
 
+        <div class="clients-counters-grid">
+          <div class="client-counter-card counter-debt">
+            <span class="client-counter-label">Clientes con deuda</span>
+            <strong class="client-counter-val text-amber" id="cli-count-con-deuda">0</strong>
+          </div>
+          <div class="client-counter-card counter-clean">
+            <span class="client-counter-label">Clientes sin deuda (al día)</span>
+            <strong class="client-counter-val text-green" id="cli-count-sin-deuda">0</strong>
+          </div>
+        </div>
+
         <div class="clients-filter-bar">
           <div class="clients-search-wrap">
             <input type="text" id="cli-search" placeholder="🔍 Filtrar por nombre, zona o ruta..." oninput="renderClients()" />
@@ -612,7 +635,7 @@
           <select id="cli-filter-barbero" onchange="renderClients()" aria-label="Filtrar por barber / encargado">
             <option value="TODOS">Barber / Encargado: Todos</option>
           </select>
-          <button type="button" id="cli-filter-reset" class="btn-ghost" style="display:none; padding:10px 12px;" onclick="resetClientFilters()">✕ Limpiar</button>
+          <button type="button" id="cli-filter-reset" class="btn-clear-filter" onclick="resetClientFilters()">✕ Limpiar</button>
         </div>
 
         <div id="cli-filter-summary" class="clients-summary-bar"></div>
@@ -650,8 +673,9 @@
           </div>
         </div>
 
-        <div class="search-bar-inline">
+        <div class="search-bar-inline search-clear-row">
           <input type="text" id="inv-search" placeholder="🔍 Buscar producto o código..." oninput="renderInventory()" />
+          <button type="button" class="btn-clear-filter" onclick="resetInventoryFilters()">✕ Limpiar</button>
         </div>
 
         <div class="table-wrap">
@@ -811,7 +835,7 @@
         <h3 id="edit-op-modal-title">✏️ Editar Operación</h3>
         <button class="btn-icon" onclick="closeModal('edit-op-modal')">✕</button>
       </div>
-      <form onsubmit="saveEditedOperation(event)" class="styled-form">
+      <form id="edit-op-form" onsubmit="saveEditedOperation(event)" class="styled-form">
         <input type="hidden" id="edit-op-id" />
         <input type="hidden" id="edit-op-was-order" />
 
@@ -899,7 +923,7 @@
         <h3 id="client-modal-title">Nuevo Cliente</h3>
         <button class="btn-icon" onclick="closeModal('client-modal')">✕</button>
       </div>
-      <form onsubmit="saveClient(event)" class="styled-form">
+      <form id="client-form" onsubmit="saveClient(event)" class="styled-form">
         <input type="hidden" id="edit-cli-id" />
         <div class="form-row">
           <div class="form-group">
@@ -949,7 +973,7 @@
           </div>
           <div class="form-group">
             <label>Deuda Base ($)</label>
-            <input type="number" id="cli-deuda" value="0" step="any" oninput="updateClientModalDebtPreview()" />
+            <input type="number" id="cli-deuda" value="0" min="0" step="any" oninput="updateClientModalDebtPreview()" />
             <div id="cli-deuda-prev-info" class="field-hint-box" style="display:none;"></div>
           </div>
         </div>
@@ -969,14 +993,14 @@
         <h3>💳 Editar Deuda Base / Saldo</h3>
         <button class="btn-icon" onclick="closeModal('deuda-base-modal')">✕</button>
       </div>
-      <form onsubmit="saveDeudaBaseModal(event)" class="styled-form">
+      <form id="deuda-base-form" onsubmit="saveDeudaBaseModal(event)" class="styled-form">
         <div class="form-group">
           <label for="db-client-select">Cliente *</label>
           <select id="db-client-select" onchange="onDeudaBaseClientChange()" required></select>
         </div>
         <div class="form-group">
           <label for="db-client-monto">Deuda / Saldo Actual ($ ARS) *</label>
-          <input type="number" id="db-client-monto" step="any" oninput="updateDeudaBaseModalPreview()" required />
+          <input type="number" id="db-client-monto" min="0" step="any" oninput="updateDeudaBaseModalPreview()" required />
           <div id="db-client-prev-info" class="field-hint-box" style="display:none;"></div>
         </div>
         <button type="submit" class="btn-primary btn-full">Guardar Deuda Base</button>
@@ -991,7 +1015,7 @@
         <h3 id="product-modal-title">Nuevo Artículo de Stock</h3>
         <button class="btn-icon" onclick="closeModal('product-modal')">✕</button>
       </div>
-      <form onsubmit="saveProduct(event)" class="styled-form">
+      <form id="product-form" onsubmit="saveProduct(event)" class="styled-form">
         <input type="hidden" id="edit-prod-original-code" />
         <div class="form-row">
           <div class="form-group">
@@ -1023,7 +1047,7 @@
         <h3>✏️ Editar Tarea</h3>
         <button class="btn-icon" onclick="closeModal('task-modal')">✕</button>
       </div>
-      <form onsubmit="saveEditedTask(event)" class="styled-form">
+      <form id="edit-task-form" onsubmit="saveEditedTask(event)" class="styled-form">
         <input type="hidden" id="edit-task-id" />
         <div class="form-group">
           <label>Título *</label>
