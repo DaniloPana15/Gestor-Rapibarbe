@@ -850,26 +850,65 @@ function getUnifiedOperationsList() {
 }
 
 /* --- PRESETS DE FECHA INICIO Y FINAL --- */
+function getPresetStartDateISO(preset) {
+  const now = new Date();
+  const endStr = todayISO();
+  if (preset === 'WEEK') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().split('T')[0];
+  }
+  if (preset === '30D') {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 29);
+    return d.toISOString().split('T')[0];
+  }
+  if (preset === 'MONTH') {
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    return d.toISOString().split('T')[0];
+  }
+  return endStr;
+}
+
 function setReportRangePreset(preset) {
   const startEl = document.getElementById('report-start-date');
   const endEl = document.getElementById('report-end-date');
   if (!startEl || !endEl) return;
 
-  const now = new Date();
-  const endStr = todayISO();
-  let startStr = endStr;
+  startEl.value = getPresetStartDateISO(preset);
+  endEl.value = todayISO();
+  renderMovements();
+}
 
-  if (preset === 'WEEK') {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 6);
-    startStr = d.toISOString().split('T')[0];
-  } else if (preset === 'MONTH') {
-    const d = new Date(now.getFullYear(), now.getMonth(), 1);
-    startStr = d.toISOString().split('T')[0];
+function applyHistoryDatePreset(preset) {
+  const rangeChk = document.getElementById('filter-movs-by-range');
+  const datePicker = document.getElementById('history-date-picker');
+  if (preset === 'ALL') {
+    if (rangeChk) rangeChk.checked = false;
+    if (datePicker) datePicker.value = '';
+    renderMovements();
+    return;
   }
 
-  startEl.value = startStr;
-  endEl.value = endStr;
+  if (rangeChk) rangeChk.checked = true;
+  setReportRangePreset(preset);
+}
+
+function applyHistorySingleDate(dateStr) {
+  const cleanDate = (dateStr || '').trim();
+  const rangeChk = document.getElementById('filter-movs-by-range');
+  const startEl = document.getElementById('report-start-date');
+  const endEl = document.getElementById('report-end-date');
+
+  if (!cleanDate) {
+    if (rangeChk) rangeChk.checked = false;
+    renderMovements();
+    return;
+  }
+
+  if (startEl) startEl.value = cleanDate;
+  if (endEl) endEl.value = cleanDate;
+  if (rangeChk) rangeChk.checked = true;
   renderMovements();
 }
 
@@ -3225,6 +3264,12 @@ function resetMovementsFilters() {
   if (typeEl) typeEl.value = 'TODOS';
   const rangeChk = document.getElementById('filter-movs-by-range');
   if (rangeChk) rangeChk.checked = false;
+  const datePicker = document.getElementById('history-date-picker');
+  if (datePicker) datePicker.value = '';
+  const startEl = document.getElementById('report-start-date');
+  if (startEl) startEl.value = todayISO();
+  const endEl = document.getElementById('report-end-date');
+  if (endEl) endEl.value = todayISO();
   activeReportZone = 'TODAS';
   const zoneSel = document.getElementById('report-zone-filter');
   if (zoneSel) zoneSel.value = 'TODAS';
@@ -3390,8 +3435,27 @@ function renderMovements() {
   const typeFilter = document.getElementById('movs-type-filter')?.value || 'TODOS';
   const onlySelectedRange = document.getElementById('filter-movs-by-range')?.checked || false;
 
+  const todayStr = todayISO();
+  let activeHistoryPreset = 'ALL';
+  if (onlySelectedRange) {
+    if (startDate === todayStr && endDate === todayStr) activeHistoryPreset = 'TODAY';
+    else if (startDate === getPresetStartDateISO('WEEK') && endDate === todayStr) activeHistoryPreset = 'WEEK';
+    else if (startDate === getPresetStartDateISO('30D') && endDate === todayStr) activeHistoryPreset = '30D';
+    else activeHistoryPreset = 'CUSTOM';
+  }
+
+  document.querySelectorAll('#history-date-presets .chip').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset?.preset === activeHistoryPreset);
+  });
+
+  const historyDatePicker = document.getElementById('history-date-picker');
+  if (historyDatePicker) {
+    historyDatePicker.value = (onlySelectedRange && startDate === endDate) ? startDate : '';
+  }
+
   const unifiedList = getUnifiedOperationsList().filter(item => {
-    if (onlySelectedRange && (item.fecha < startDate || item.fecha > endDate)) return false;
+    const itemFecha = item.fecha || '';
+    if (onlySelectedRange && (!itemFecha || itemFecha < startDate || itemFecha > endDate)) return false;
     if (activeReportZone !== 'TODAS' && item.zona !== activeReportZone) return false;
 
     const normTipo = normalizeOpType(item.tipo);
@@ -3402,11 +3466,25 @@ function renderMovements() {
     if (typeFilter === 'ABONO / PAGO' && normTipo !== 'ABONO / PAGO') return false;
 
     if (q) {
-      const hay = `${item.barberia} ${item.barbero} ${item.zona || ''} ${item.detalle} ${getOpTypeLabel(item.tipo)} ${item.fecha}`.toLowerCase();
+      const hay = `${item.barberia} ${item.barbero} ${item.zona || ''} ${item.detalle} ${getOpTypeLabel(item.tipo)} ${itemFecha}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
+
+  const historyCountEl = document.getElementById('movs-history-count');
+  if (historyCountEl) {
+    const opsCountLabel = `${unifiedList.length} ${unifiedList.length === 1 ? 'operación' : 'operaciones'}`;
+    let rangeTag = '';
+    if (onlySelectedRange) {
+      if (activeHistoryPreset === 'TODAY') rangeTag = `Hoy (${startDate})`;
+      else if (activeHistoryPreset === 'WEEK') rangeTag = 'Últimos 7 días';
+      else if (activeHistoryPreset === '30D') rangeTag = 'Últimos 30 días';
+      else if (startDate === endDate) rangeTag = startDate;
+      else rangeTag = `${startDate} → ${endDate}`;
+    }
+    historyCountEl.textContent = rangeTag ? `${opsCountLabel} · ${rangeTag}` : opsCountLabel;
+  }
 
   tbody.innerHTML = unifiedList.length ? unifiedList.map(m => {
     const normTipo = normalizeOpType(m.tipo);

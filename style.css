@@ -1931,3 +1931,40 @@ input:focus, select:focus, textarea:focus {
   flex-wrap: wrap;
   gap: 10px;
 }
+
+/* HISTORIAL DE OPERACIONES: CONTADOR Y CONTROLES COMPACTOS DE FECHA */
+.history-panel-head {
+  align-items: center;
+}
+
+.history-title-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.history-date-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-date-input {
+  width: auto;
+  min-width: 138px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 999px;
+}
+
+@media (max-width: 600px) {
+  .history-date-controls {
+    width: 100%;
+  }
+  .history-date-input {
+    flex: 1;
+    min-width: 0;
+  }
+}

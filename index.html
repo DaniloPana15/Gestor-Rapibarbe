@@ -495,8 +495,20 @@
 
           <!-- HISTORIAL COMPLETO -->
           <div class="glass-card panel-box">
-            <div class="panel-head" style="margin-bottom:10px;">
-              <h2>Historial</h2>
+            <div class="panel-head history-panel-head" style="margin-bottom:10px;">
+              <div class="history-title-group">
+                <h2>Historial</h2>
+                <span id="movs-history-count" class="trend-pill">0 operaciones</span>
+              </div>
+              <div class="history-date-controls">
+                <div class="route-filters" id="history-date-presets">
+                  <button type="button" class="chip" data-preset="TODAY" onclick="applyHistoryDatePreset('TODAY')">Hoy</button>
+                  <button type="button" class="chip" data-preset="WEEK" onclick="applyHistoryDatePreset('WEEK')">7 días</button>
+                  <button type="button" class="chip" data-preset="30D" onclick="applyHistoryDatePreset('30D')">30 días</button>
+                  <button type="button" class="chip active" data-preset="ALL" onclick="applyHistoryDatePreset('ALL')">Todo</button>
+                </div>
+                <input type="date" id="history-date-picker" class="history-date-input" title="Filtrar historial por una fecha puntual" aria-label="Filtrar historial por fecha puntual" onchange="applyHistorySingleDate(this.value)" />
+              </div>
             </div>
 
             <div class="search-bar-inline search-clear-row" style="flex-wrap:wrap;">
