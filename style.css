@@ -612,6 +612,7 @@ body {
 
 /* INPUTS Y FORMULARIOS */
 input, select, textarea {
+  box-sizing: border-box;
   background: rgba(8, 12, 24, 0.85);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -620,6 +621,8 @@ input, select, textarea {
   font-family: inherit;
   font-size: 14px;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -1090,7 +1093,9 @@ input:focus, select:focus, textarea:focus {
   opacity: 0;
   pointer-events: none;
   transition: all 0.25s ease;
-  white-space: nowrap;
+  max-width: calc(100vw - 24px);
+  white-space: normal;
+  text-align: center;
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
@@ -1194,9 +1199,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 @media (max-width: 600px) {
-  .papa-kpis-grid { grid-template-columns: minmax(0, 1fr); }
-  .form-row, .form-row-3 { grid-template-columns: minmax(0, 1fr); }
-  .panel-box { padding: 18px 14px; border-radius: 20px; }
+  .panel-box { padding: 16px 12px; border-radius: 20px; }
   .data-table th, .data-table td { padding: 11px 8px; }
 }
 
@@ -1532,7 +1535,71 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 10px;
 }
 
-/* BUSCADORES CON BOTÓN LIMPIAR */
+/* BUSCADORES CON BOTÓN X INTEGRADO Y BOTÓN LIMPIAR */
+.search-input-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.search-input-box input {
+  width: 100%;
+  padding-right: 36px;
+}
+
+.search-clear-x {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.14);
+  color: #e2e8f0;
+  font-size: 11.5px;
+  font-weight: 800;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.search-clear-x.is-visible {
+  display: inline-flex;
+}
+
+.search-clear-x:hover {
+  background: rgba(239, 68, 68, 0.35);
+  color: #fff;
+}
+
+.movs-history-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.movs-search-wrap {
+  flex: 1;
+  min-width: 180px;
+}
+
+.movs-type-select {
+  width: 160px;
+  flex-shrink: 0;
+}
+
 .search-clear-row {
   display: flex;
   align-items: center;
@@ -1657,10 +1724,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 @media (max-width: 600px) {
-  .clients-counters-grid,
-  .clients-filter-bar,
-  .orders-metrics-grid,
-  .orders-filter-bar {
+  .clients-counters-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -2101,6 +2165,407 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 600px) {
   .quick-preview-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* RESPONSIVE CELULAR (< 768px): CERO DESBORDAMIENTO, TARJETAS Y FILTROS COMPACTOS */
+@media (max-width: 768px) {
+  html, body, .app-container, .tab-content, .dashboard-split, .two-col-form,
+  .side-stack, .panel-box, .glass-card, .styled-form, .form-group,
+  .voice-box, .daily-papa-card, .order-group-card {
+    max-width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .app-container {
+    padding: 14px 12px 24px;
+    overflow-x: hidden;
+  }
+
+  .tab-content {
+    padding-bottom: 110px;
+  }
+
+  /* 2. Buscador con X integrada al 100% */
+  .search-input-box,
+  .orders-search-wrap,
+  .clients-search-wrap,
+  .movs-search-wrap {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-input-box input {
+    width: 100%;
+    padding-right: 36px;
+  }
+
+  /* 3. Filtros desplegables en grilla de 2 columnas */
+  .orders-filter-bar,
+  .clients-filter-bar,
+  .movs-history-filter-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    align-items: stretch;
+  }
+
+  .orders-search-wrap,
+  .clients-search-wrap,
+  .movs-search-wrap {
+    grid-column: 1 / -1;
+  }
+
+  .orders-filter-bar select,
+  .clients-filter-bar select,
+  .movs-history-filter-bar select,
+  .orders-filter-bar .btn-clear-filter,
+  .clients-filter-bar .btn-clear-filter,
+  .movs-history-filter-bar .btn-clear-filter {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 10px 10px;
+    font-size: 12.5px;
+    text-overflow: ellipsis;
+  }
+
+  /* 4. Tarjetas de métricas en Pedidos y Ventas: 2 arriba + 1 abajo, sin recortar texto */
+  .orders-metrics-grid,
+  .papa-kpis-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .orders-metrics-grid > .order-metric-card:last-child,
+  .papa-kpis-grid > .report-check-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .order-metric-card,
+  .papa-kpi-box {
+    padding: 10px 11px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .order-metric-label,
+  .papa-kpi-label {
+    font-size: 10.5px;
+    letter-spacing: 0.02em;
+    line-height: 1.25;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  .order-metric-val {
+    font-size: 20px;
+  }
+
+  .papa-kpi-value {
+    font-size: 16px;
+  }
+
+  .order-metric-sub,
+  .papa-kpi-sub {
+    font-size: 10.5px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
+  /* 5. Apartado de Ventas y Pedidos en bloques verticales bien espaciados */
+  .panel-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .daily-papa-card .panel-head > div {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .daily-papa-card .panel-head > div button {
+    width: 100%;
+    padding: 8px 6px;
+  }
+
+  .form-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .form-row-3 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .form-row-3 > .form-group:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .form-row-3 input,
+  .form-row-3 select {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #report-selected-tags {
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .zone-sales-head {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .history-date-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+
+  #history-date-presets {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  #history-date-presets .chip {
+    width: 100%;
+    padding: 7px 4px;
+    text-align: center;
+    font-size: 11.5px;
+  }
+
+  .history-date-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .orders-view-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  #order-view-mode-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  #order-view-mode-filters .chip {
+    width: 100%;
+    text-align: center;
+    padding: 8px 8px;
+  }
+
+  .orders-group-select-wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .orders-group-select-wrap select {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .orders-summary-bar,
+  .clients-summary-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .order-group-summary {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .order-group-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .order-group-item-main {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .order-group-item-right {
+    width: 100%;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 8px;
+  }
+
+  .order-group-item-right .text-right {
+    text-align: left;
+  }
+
+  .quick-preview-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .date-input-with-dmy {
+    flex-wrap: wrap;
+  }
+
+  .date-input-with-dmy input[type="date"] {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .picker-row {
+    flex-wrap: wrap;
+  }
+
+  .picker-row input[type="text"] {
+    flex: 1 1 100%;
+  }
+
+  /* Tablas de Ventas (#tab-movimientos) y Pedidos (#tab-pedidos) como bloques verticales */
+  #tab-movimientos .table-wrap,
+  #tab-pedidos .table-wrap {
+    overflow-x: visible;
+    max-height: none;
+  }
+
+  #tab-movimientos .data-table,
+  #tab-pedidos .data-table,
+  #tab-movimientos .data-table tbody,
+  #tab-pedidos .data-table tbody {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  #tab-movimientos .data-table thead,
+  #tab-pedidos .data-table thead {
+    display: none;
+  }
+
+  #tab-movimientos .data-table tr,
+  #tab-pedidos .data-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-md);
+    background: rgba(8, 12, 24, 0.7);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  #tab-movimientos .data-table td,
+  #tab-pedidos .data-table td {
+    display: block;
+    padding: 0;
+    border: none;
+    min-width: 0;
+    max-width: 100%;
+    text-align: left !important;
+    white-space: normal !important;
+    word-break: break-word;
+  }
+
+  #tab-movimientos .data-table td[colspan],
+  #tab-pedidos .data-table td[colspan] {
+    grid-column: 1 / -1;
+    text-align: center !important;
+    padding: 16px 8px;
+  }
+
+  /* Historial de Ventas: Fila 1 Fecha | Tipo, Fila 2 Cliente/Detalle, Fila 3 Monto | Acciones */
+  #tab-movimientos .data-table td:nth-child(1) {
+    font-size: 12px;
+    color: var(--text-muted);
+    align-self: center;
+  }
+
+  #tab-movimientos .data-table td:nth-child(3) {
+    justify-self: end;
+    align-self: center;
+  }
+
+  #tab-movimientos .data-table td:nth-child(2) {
+    grid-column: 1 / -1;
+    font-size: 13.5px;
+    line-height: 1.4;
+  }
+
+  #tab-movimientos .data-table td:nth-child(4) {
+    font-size: 16px;
+    align-self: center;
+  }
+
+  #tab-movimientos .data-table td:nth-child(5) {
+    justify-self: end;
+    align-self: center;
+  }
+
+  /* Tabla de Pedidos: Fila 1 Fecha/Ruta | Estado, Fila 2 Barbería/Barbero, Fila 3 Zona, Fila 4 Productos, Fila 5 Monto, Fila 6 Acciones */
+  #tab-pedidos .data-table td:nth-child(1) {
+    align-self: center;
+  }
+
+  #tab-pedidos .data-table td:nth-child(6) {
+    justify-self: end;
+    align-self: center;
+  }
+
+  #tab-pedidos .data-table td:nth-child(3),
+  #tab-pedidos .data-table td:nth-child(2),
+  #tab-pedidos .data-table td:nth-child(4),
+  #tab-pedidos .data-table td:nth-child(5) {
+    grid-column: 1 / -1;
+  }
+
+  #tab-pedidos .data-table td:nth-child(5) {
+    font-size: 15px;
+  }
+
+  #tab-pedidos .data-table td:nth-child(7) {
+    grid-column: 1 / -1;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  #tab-pedidos .data-table td:nth-child(7) .action-icon-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 

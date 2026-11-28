@@ -512,9 +512,12 @@
               </div>
             </div>
 
-            <div class="search-bar-inline search-clear-row" style="flex-wrap:wrap;">
-              <input type="text" id="movs-history-search" placeholder="🔍 Buscar cliente, zona o detalle..." oninput="renderMovements()" style="flex:1; min-width:180px;" />
-              <select id="movs-type-filter" onchange="renderMovements()" style="width:160px;">
+            <div class="search-bar-inline movs-history-filter-bar">
+              <div class="movs-search-wrap search-input-box">
+                <input type="text" id="movs-history-search" placeholder="🔍 Buscar cliente, zona o detalle..." oninput="renderMovements()" />
+                <button type="button" class="search-clear-x" id="clear-x-movs-history-search" onclick="clearSearchInput('movs-history-search', renderMovements)" aria-label="Limpiar búsqueda" title="Limpiar búsqueda">✕</button>
+              </div>
+              <select id="movs-type-filter" class="movs-type-select" onchange="renderMovements()">
                 <option value="TODOS">Todos</option>
                 <option value="VENTAS">Ventas</option>
                 <option value="VENTA CONTADO">Contado</option>
@@ -577,8 +580,9 @@
           </div>
 
           <div class="orders-filter-bar">
-            <div class="orders-search-wrap">
+            <div class="orders-search-wrap search-input-box">
               <input type="text" id="order-search" placeholder="🔍 Buscar pedido, zona, barbería, barbero o producto..." oninput="renderOrders()" />
+              <button type="button" class="search-clear-x" id="clear-x-order-search" onclick="clearSearchInput('order-search', renderOrders)" aria-label="Limpiar búsqueda" title="Limpiar búsqueda">✕</button>
             </div>
             <select id="order-filter-zona" onchange="renderOrders()" aria-label="Filtrar pedidos por zona">
               <option value="TODAS">Zona: Todas</option>
@@ -683,8 +687,9 @@
         </div>
 
         <div class="clients-filter-bar">
-          <div class="clients-search-wrap">
+          <div class="clients-search-wrap search-input-box">
             <input type="text" id="cli-search" placeholder="🔍 Filtrar por nombre, zona o ruta..." oninput="renderClients()" />
+            <button type="button" class="search-clear-x" id="clear-x-cli-search" onclick="clearSearchInput('cli-search', renderClients)" aria-label="Limpiar búsqueda" title="Limpiar búsqueda">✕</button>
           </div>
           <select id="cli-filter-estado" onchange="renderClients()" aria-label="Filtrar por estado de cuenta">
             <option value="TODOS">Estado: Todos</option>

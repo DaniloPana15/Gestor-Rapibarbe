@@ -2491,8 +2491,175 @@ function resolveClientCandidate(rawWho, explicitZone = '') {
 }
 
 /* ANALIZADOR LOCAL INSTANTÁNEO DE 2 MODOS (MODO RÁPIDO 1 CLIENTE vs MODO LOTE AISLADO) */
+function parseKeyValueStructuredOps(rawText) {
+  const src = String(rawText || '').trim();
+  if (!src) return [];
+
+  const keyPattern = /(?=(?:TIPO|CLIENTE|MONTO\s+TOTAL|MONTO|ABONO\s*\/\s*ENTREGA|ABONO|ENTREGA|FECHA|DETALLE|NOTAS?|MEDIO|ZONA|SE[ÑN]A)\s*:)/gi;
+  const expanded = src
+    .replace(/\r?\n/g, '\n')
+    .replace(/^\s*(?:[o◦•*-]|\d+[.)])\s+(?=(?:TIPO|CLIENTE|MONTO|ABONO|ENTREGA|FECHA|DETALLE|NOTAS?|MEDIO|ZONA|SE[ÑN]A)\s*:)/gim, '')
+    .replace(keyPattern, '\n');
+
+  const lines = expanded
+    .split('\n')
+    .map(l => l.replace(/^\s*(?:[o◦•*-]|\d+[.)])\s+/, '').trim())
+    .filter(Boolean);
+
+  const tipoCount = lines.filter(l => /^TIPO\s*:/i.test(l)).length;
+  const hasClienteAndMontoOrDetalle = lines.some(l => /^CLIENTE\s*:/i.test(l)) &&
+    lines.some(l => /^(?:MONTO(?:\s+TOTAL)?|ABONO(?:\s*\/\s*ENTREGA)?|DETALLE)\s*:/i.test(l));
+
+  if (tipoCount === 0 && !hasClienteAndMontoOrDetalle) return [];
+
+  const groups = [];
+  let cur = null;
+  const pushCur = () => {
+    if (cur && (cur.tipo || cur.cliente || cur.montoRaw || cur.abonoRaw || cur.detalle)) {
+      groups.push(cur);
+    }
+    cur = null;
+  };
+
+  for (const line of lines) {
+    const m = line.match(/^(TIPO|CLIENTE|MONTO\s+TOTAL|MONTO|ABONO\s*\/\s*ENTREGA|ABONO|ENTREGA|FECHA|DETALLE|NOTAS?|MEDIO|ZONA|SE[ÑN]A)\s*:\s*(.*)$/i);
+    if (!m) {
+      if (cur && cur.lastField === 'detalle') {
+        cur.detalle = (cur.detalle + ' ' + line).trim();
+      }
+      continue;
+    }
+
+    const key = m[1].toUpperCase().replace(/\s+/g, ' ').trim();
+    const val = (m[2] || '').trim();
+
+    if (key === 'TIPO') {
+      pushCur();
+      cur = { tipo: val, cliente: '', montoRaw: '', abonoRaw: '', fechaRaw: '', detalle: '', medioRaw: '', zonaRaw: '', senaRaw: '', lastField: 'tipo' };
+      continue;
+    }
+
+    if (!cur) {
+      cur = { tipo: '', cliente: '', montoRaw: '', abonoRaw: '', fechaRaw: '', detalle: '', medioRaw: '', zonaRaw: '', senaRaw: '', lastField: '' };
+    }
+
+    if (key === 'CLIENTE') {
+      if (cur.cliente && (cur.montoRaw || cur.detalle)) {
+        pushCur();
+        cur = { tipo: '', cliente: '', montoRaw: '', abonoRaw: '', fechaRaw: '', detalle: '', medioRaw: '', zonaRaw: '', senaRaw: '', lastField: '' };
+      }
+      cur.cliente = val;
+      cur.lastField = 'cliente';
+    } else if (key === 'MONTO TOTAL' || key === 'MONTO') {
+      cur.montoRaw = val;
+      cur.lastField = 'monto';
+    } else if (key === 'ABONO / ENTREGA' || key === 'ABONO' || key === 'ENTREGA') {
+      cur.abonoRaw = val;
+      cur.lastField = 'abono';
+    } else if (key === 'FECHA') {
+      cur.fechaRaw = val;
+      cur.lastField = 'fecha';
+    } else if (key === 'DETALLE' || key === 'NOTA' || key === 'NOTAS') {
+      cur.detalle = cur.detalle ? `${cur.detalle} · ${val}` : val;
+      cur.lastField = 'detalle';
+    } else if (key === 'MEDIO') {
+      cur.medioRaw = val;
+      cur.lastField = 'medio';
+    } else if (key === 'ZONA') {
+      cur.zonaRaw = val;
+      cur.lastField = 'zona';
+    } else if (key === 'SEÑA' || key === 'SENA') {
+      cur.senaRaw = val;
+      cur.lastField = 'sena';
+    }
+  }
+  pushCur();
+
+  return groups.map(g => {
+    const rawDet = (g.detalle || '').trim();
+    const normTipo = normalizeOpType(g.tipo || (/\bpedido|encargo\b/i.test(rawDet) ? 'PEDIDO' : (/\babono|pag[oó]|cobr/i.test(rawDet) ? 'ABONO / PAGO' : (/\bcontado|efectivo|transfer/i.test(rawDet) ? 'VENTA CONTADO' : 'VENTA A CREDITO'))));
+
+    let cleanCli = (g.cliente || '').trim();
+    const revMatch = cleanCli.match(/\[REVISAR\s+NOMBRE\s*:\s*([^\]]+)\]/i);
+    if (revMatch) cleanCli = revMatch[1].trim();
+    cleanCli = cleanCli.replace(/^\[|\]$/g, '').trim();
+
+    let resolvedCli = CONSUMIDOR_FINAL_COMPOSITE;
+    let resolvedZona = normalizeZoneName(g.zonaRaw || '');
+    if (!cleanCli || /^A\s+DEFINIR$/i.test(cleanCli)) {
+      resolvedCli = normTipo === 'VENTA CONTADO' ? CONSUMIDOR_FINAL_COMPOSITE : (cleanCli ? 'A DEFINIR' : '');
+    } else if (!isAnonymousClientName(cleanCli)) {
+      const res = resolveClientCandidate(cleanCli, resolvedZona);
+      resolvedCli = res.cliente;
+      resolvedZona = res.zona || resolvedZona;
+    }
+
+    const parseAmountField = (txt) => {
+      const t = String(txt || '').trim();
+      if (!t || /A\s+DEFINIR/i.test(t)) return 0;
+      const m = t.match(/\$?\s*([\d.,]+(?:\s*(?:mil|k))?)/i);
+      return m ? parseArsAmount(m[1]) : 0;
+    };
+
+    let montoVal = parseAmountField(g.montoRaw);
+    const abonoFieldVal = parseAmountField(g.abonoRaw);
+    const senaFieldVal = parseAmountField(g.senaRaw);
+    const matchedItems = normTipo === 'ABONO / PAGO' ? [] : matchInventoryItemsFromLine(rawDet);
+    if (!montoVal && matchedItems.length) {
+      montoVal = matchedItems.reduce((acc, it) => acc + (it.qty * it.precio), 0);
+    }
+
+    let abonoParcial = 0;
+    let sena = senaFieldVal;
+    if (normTipo === 'ABONO / PAGO') {
+      if (!montoVal && abonoFieldVal > 0) montoVal = abonoFieldVal;
+    } else if (normTipo === 'VENTA A CREDITO') {
+      abonoParcial = abonoFieldVal;
+    } else if (normTipo === 'VENTA CONTADO') {
+      if (abonoFieldVal > montoVal && montoVal > 0) {
+        abonoParcial = abonoFieldVal - montoVal;
+      } else if (abonoFieldVal > 0 && abonoFieldVal < montoVal && /\b(?:deuda\s+anterior|saldo\s+pendiente|abon[oóa]\s+deuda)\b/i.test(rawDet)) {
+        abonoParcial = abonoFieldVal;
+      }
+    } else if (normTipo === 'PEDIDO') {
+      if (!sena && abonoFieldVal > 0) sena = abonoFieldVal;
+    }
+
+    let opFecha = todayISO();
+    const fRaw = (g.fechaRaw || '').trim();
+    if (fRaw && !/^HOY$/i.test(fRaw)) {
+      opFecha = extractDateISOFromText(fRaw) || normalizeOperationDateISO(fRaw);
+    } else if (!fRaw && rawDet) {
+      opFecha = extractDateISOFromText(rawDet) || todayISO();
+    }
+
+    const medioSrc = `${g.medioRaw} ${rawDet}`;
+    const medio = /transfer|mp\b|mercado\s*pago|alias/i.test(medioSrc)
+      ? 'TRANSFERENCIA'
+      : (normTipo === 'VENTA A CREDITO' ? 'CUENTA CORRIENTE' : (normTipo === 'PEDIDO' ? 'ENCARGO' : 'EFECTIVO'));
+
+    return {
+      tipo: normTipo,
+      fecha: opFecha,
+      cliente: resolvedCli,
+      zona: resolvedZona,
+      items: matchedItems,
+      resolvedItems: matchedItems,
+      montoManual: montoVal,
+      abonoParcial: isAnonymousClientName(resolvedCli) ? 0 : abonoParcial,
+      sena,
+      medio,
+      notas: rawDet || getOpTypeLabel(normTipo)
+    };
+  });
+}
+
 function splitIntoIsolatedBlocks(rawText) {
-  const lines = rawText.split(/\r?\n/);
+  let normalizedText = String(rawText || '');
+  if (!/\r?\n/.test(normalizedText)) {
+    normalizedText = normalizedText.replace(/\s+(?=[-•*]\s+[^:]{2,55}:)/g, '\n');
+  }
+  const lines = normalizedText.split(/\r?\n/);
   const blocks = [];
   let inOrdersSection = false;
   let currentGroup = [];
@@ -2816,6 +2983,9 @@ function parseSingleBlockIsolated(block) {
 }
 
 function parseStructuredSummaryLocally(rawText) {
+  const kvOps = parseKeyValueStructuredOps(rawText);
+  if (kvOps.length) return kvOps;
+
   const blocks = splitIntoIsolatedBlocks(rawText);
   if (!blocks.length) return [];
   const allOps = [];
@@ -4294,9 +4464,28 @@ function setReportZoneFilter(zone) {
   renderMovements();
 }
 
+function toggleSearchClearBtn(inputId) {
+  const inp = document.getElementById(inputId);
+  const btn = document.getElementById('clear-x-' + inputId);
+  if (!btn) return;
+  const hasVal = Boolean(inp && inp.value && inp.value.length > 0);
+  btn.classList.toggle('is-visible', hasVal);
+}
+
+function clearSearchInput(inputId, renderFn) {
+  const inp = document.getElementById(inputId);
+  if (inp) {
+    inp.value = '';
+    inp.focus();
+  }
+  toggleSearchClearBtn(inputId);
+  if (typeof renderFn === 'function') renderFn();
+}
+
 function resetMovementsFilters() {
   const searchEl = document.getElementById('movs-history-search');
   if (searchEl) searchEl.value = '';
+  toggleSearchClearBtn('movs-history-search');
   const typeEl = document.getElementById('movs-type-filter');
   if (typeEl) typeEl.value = 'TODOS';
   const rangeChk = document.getElementById('filter-movs-by-range');
@@ -4469,6 +4658,7 @@ function renderMovements() {
   if (!tbody) return;
 
   const q = (document.getElementById('movs-history-search')?.value || '').toLowerCase();
+  toggleSearchClearBtn('movs-history-search');
   const typeFilter = document.getElementById('movs-type-filter')?.value || 'TODOS';
   const onlySelectedRange = document.getElementById('filter-movs-by-range')?.checked || false;
 
@@ -4731,6 +4921,7 @@ function renderOrders() {
   populateOrderFilterSelects();
 
   const q = (document.getElementById('order-search')?.value || '').trim().toLowerCase();
+  toggleSearchClearBtn('order-search');
   const zonaFilter = document.getElementById('order-filter-zona')?.value || 'TODAS';
   const barberiaFilter = document.getElementById('order-filter-barberia')?.value || 'TODAS';
   const barberoFilter = document.getElementById('order-filter-barbero')?.value || 'TODOS';
@@ -5053,6 +5244,7 @@ function renderClients() {
   populateClientFilterSelects();
 
   const q = (document.getElementById('cli-search')?.value || '').toLowerCase();
+  toggleSearchClearBtn('cli-search');
   const estadoFilter = document.getElementById('cli-filter-estado')?.value || 'TODOS';
   const zonaFilter = document.getElementById('cli-filter-zona')?.value || 'TODAS';
   const barberoFilter = document.getElementById('cli-filter-barbero')?.value || 'TODOS';
