@@ -11,6 +11,9 @@ let db = { clients: [], movs: [], inv: [], orders: [], tasks: [] };
 let config = { pin: '1234', cloudKey: '', cloudBin: '', geminiKey: '' };
 let activeRouteFilter = 'TODOS';
 let activeOrderFilter = 'PENDIENTE';
+let activeOrderViewMode = 'TABLE';
+let activeOrderGroupBy = 'ZONA';
+const collapsedOrderGroups = new Set();
 let activeTaskFilter = 'PENDIENTES';
 let activeReportZone = 'TODAS';
 let returnNewClientToSaleForm = false;
@@ -3436,6 +3439,104 @@ function renderMovements() {
 }
 
 /* --- BANDEJA DE PEDIDOS SIMPLIFICADOS (PENDIENTE -> PREPARADO -> ENTREGADO) --- */
+function resolveOrderMetadata(o) {
+  const rawCli = (o?.cliente || '').trim();
+  const matched = findClientByComposite(rawCli);
+
+  let zona = resolveOperationZona(o);
+  if ((!zona || zona === 'SIN ZONA' || zona === 'MOSTRADOR / SIN ZONA') && matched && matched.zona && matched.zona.trim()) {
+    zona = normalizeZoneName(matched.zona);
+  }
+  if (!zona || zona === 'MOSTRADOR / SIN ZONA') {
+    zona = 'SIN ZONA';
+  }
+
+  let barberia = '';
+  let barbero = '';
+  if (rawCli.includes('|')) {
+    const parts = rawCli.split('|');
+    barberia = (parts[0] || '').trim().toUpperCase();
+    barbero = parts.slice(1).join('|').trim().toUpperCase();
+  } else if (rawCli && !isAnonymousClientName(rawCli)) {
+    if (matched) {
+      barberia = (matched.barberia || '').trim().toUpperCase() || rawCli.toUpperCase();
+      barbero = (matched.barbero || '').trim().toUpperCase();
+    } else {
+      barberia = rawCli.toUpperCase();
+    }
+  }
+
+  if (!barberia && matched && matched.barberia) {
+    barberia = matched.barberia.trim().toUpperCase();
+  }
+  if (!barbero && matched && matched.barbero) {
+    barbero = matched.barbero.trim().toUpperCase();
+  }
+
+  return {
+    zona: zona || 'SIN ZONA',
+    barberia: barberia || 'SIN BARBERÍA',
+    barbero: barbero || 'SIN BARBERO',
+    matched
+  };
+}
+
+function sortOrderTaxonomyValues(valuesSet, fallbackLast) {
+  return Array.from(valuesSet).sort((a, b) => {
+    if (a === fallbackLast && b !== fallbackLast) return 1;
+    if (b === fallbackLast && a !== fallbackLast) return -1;
+    return a.localeCompare(b);
+  });
+}
+
+function populateOrderFilterSelects() {
+  const zonaSel = document.getElementById('order-filter-zona');
+  const barberiaSel = document.getElementById('order-filter-barberia');
+  const barberoSel = document.getElementById('order-filter-barbero');
+  if (!zonaSel || !barberiaSel || !barberoSel) return;
+
+  const prevZona = zonaSel.value || 'TODAS';
+  const prevBarberia = barberiaSel.value || 'TODAS';
+  const prevBarbero = barberoSel.value || 'TODOS';
+
+  const zonesSet = new Set();
+  const barberiasSet = new Set();
+  const barberosSet = new Set();
+
+  (db.clients || []).forEach(c => {
+    const z = normalizeZoneName(c.zona || '');
+    if (z) zonesSet.add(z);
+    const b1 = (c.barberia || '').trim().toUpperCase();
+    if (b1) barberiasSet.add(b1);
+    const b2 = (c.barbero || '').trim().toUpperCase();
+    if (b2) barberosSet.add(b2);
+  });
+
+  (db.orders || []).forEach(o => {
+    const meta = resolveOrderMetadata(o);
+    if (meta.zona) zonesSet.add(meta.zona);
+    if (meta.barberia) barberiasSet.add(meta.barberia);
+    if (meta.barbero) barberosSet.add(meta.barbero);
+  });
+
+  const sortedZones = sortOrderTaxonomyValues(zonesSet, 'SIN ZONA');
+  const sortedBarberias = sortOrderTaxonomyValues(barberiasSet, 'SIN BARBERÍA');
+  const sortedBarberos = sortOrderTaxonomyValues(barberosSet, 'SIN BARBERO');
+
+  zonaSel.innerHTML = `<option value="TODAS">Zona: Todas</option>` +
+    sortedZones.map(z => `<option value="${escapeAttr(z)}">${escapeAttr(z)}</option>`).join('');
+
+  barberiaSel.innerHTML = `<option value="TODAS">Barbería: Todas</option>` +
+    sortedBarberias.map(b => `<option value="${escapeAttr(b)}">${escapeAttr(b)}</option>`).join('');
+
+  barberoSel.innerHTML = `<option value="TODOS">Barbero: Todos</option>` +
+    sortedBarberos.map(b => `<option value="${escapeAttr(b)}">${escapeAttr(b)}</option>`).join('');
+
+  zonaSel.value = Array.from(zonaSel.options).some(opt => opt.value === prevZona) ? prevZona : 'TODAS';
+  barberiaSel.value = Array.from(barberiaSel.options).some(opt => opt.value === prevBarberia) ? prevBarberia : 'TODAS';
+  barberoSel.value = Array.from(barberoSel.options).some(opt => opt.value === prevBarbero) ? prevBarbero : 'TODOS';
+}
+
 function setOrderFilter(status, btn) {
   activeOrderFilter = status;
   document.querySelectorAll('#order-status-filters .chip').forEach(c => c.classList.remove('active'));
@@ -3443,9 +3544,37 @@ function setOrderFilter(status, btn) {
   renderOrders();
 }
 
+function setOrderViewMode(mode, btn) {
+  activeOrderViewMode = mode === 'GROUPED' ? 'GROUPED' : 'TABLE';
+  document.querySelectorAll('#order-view-mode-filters .chip').forEach(c => {
+    const isMatch = c.dataset?.view === activeOrderViewMode || (c.getAttribute('onclick') || '').includes(`'${activeOrderViewMode}'`);
+    c.classList.toggle('active', Boolean(btn ? c === btn : isMatch));
+  });
+  renderOrders();
+}
+
+function setOrderGroupBy(groupBy) {
+  const valid = ['ZONA', 'BARBERIA', 'BARBERO'].includes(groupBy) ? groupBy : 'ZONA';
+  activeOrderGroupBy = valid;
+  if (activeOrderViewMode !== 'GROUPED') {
+    setOrderViewMode('GROUPED');
+    return;
+  }
+  renderOrders();
+}
+
+function toggleOrderGroupCollapse(storageKey, isOpen) {
+  if (isOpen) collapsedOrderGroups.delete(storageKey);
+  else collapsedOrderGroups.add(storageKey);
+}
+
 function resetOrderFilters() {
   const searchEl = document.getElementById('order-search');
   if (searchEl) searchEl.value = '';
+  if (document.getElementById('order-filter-zona')) document.getElementById('order-filter-zona').value = 'TODAS';
+  if (document.getElementById('order-filter-barberia')) document.getElementById('order-filter-barberia').value = 'TODAS';
+  if (document.getElementById('order-filter-barbero')) document.getElementById('order-filter-barbero').value = 'TODOS';
+
   activeOrderFilter = 'TODOS';
   const chips = document.querySelectorAll('#order-status-filters .chip');
   chips.forEach(c => {
@@ -3455,79 +3584,225 @@ function resetOrderFilters() {
   renderOrders();
 }
 
-function renderOrders() {
-  const q = (document.getElementById('order-search').value || '').toLowerCase();
-  const tbody = document.getElementById('orders-body');
-  if (!tbody) return;
+function getOrderStatusBadgeHtml(est) {
+  if (est === 'PREPARADO') return '<span class="kpi-badge badge-purple">📦 Comprado / Preparado</span>';
+  if (est === 'ENTREGADO') return '<span class="kpi-badge badge-green">✓ Entregado</span>';
+  return '<span class="kpi-badge badge-amber">⏳ Pendiente</span>';
+}
 
-  const orders = (db.orders || [])
-    .filter(o => {
-      const est = o.estado || 'PENDIENTE';
-      return activeOrderFilter === 'TODOS' || est === activeOrderFilter;
-    })
-    .filter(o => {
-      const itemsStr = (o.items || []).map(i => i.producto).join(' ').toLowerCase();
-      const zona = resolveOperationZona(o).toLowerCase();
-      return (o.cliente || '').toLowerCase().includes(q) ||
-             zona.includes(q) ||
-             itemsStr.includes(q) ||
-             (o.detalleManual || '').toLowerCase().includes(q) ||
-             (o.notas || '').toLowerCase().includes(q);
-    });
-
-  tbody.innerHTML = orders.length ? orders.map(o => {
-    const desc = (o.items && o.items.length)
-      ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
-      : (o.detalleManual || o.notas || 'Pedido sin detalle');
-    const est = o.estado || 'PENDIENTE';
-    const total = Number(o.totalEstimado) || 0;
-    const sena = Number(o.sena) || 0;
-    const zona = resolveOperationZona(o);
-    const zonaStr = (zona && zona !== 'SIN ZONA' && zona !== 'MOSTRADOR / SIN ZONA')
-      ? `<div class="muted" style="font-size:11px;">📍 ${escapeAttr(zona)}</div>`
-      : `<div class="muted" style="font-size:11px;">Sin zona</div>`;
-    const senaStr = sena > 0 ? `<div class="muted" style="font-size:11px;">Seña: ${fmtMoney(sena)} · Resta: ${fmtMoney(Math.max(0, total - sena))}</div>` : '';
-
-    let stateBadge = '<span class="kpi-badge badge-amber">⏳ Pendiente</span>';
-    if (est === 'PREPARADO') stateBadge = '<span class="kpi-badge badge-purple">📦 Comprado / Preparado</span>';
-    else if (est === 'ENTREGADO') stateBadge = '<span class="kpi-badge badge-green">✓ Entregado</span>';
-
-    let actionBtns = '';
-    if (est === 'PENDIENTE') {
-      actionBtns = `
-        <button class="btn-sm btn-prep" onclick="setOrderStatus('${o.id}', 'PREPARADO')" title="Marcar Comprado / Preparado">✓ Preparado</button>
-        <button class="btn-sm btn-deliver" onclick="setOrderStatus('${o.id}', 'ENTREGADO')" title="Marcar Entregado y descontar stock">🚚 Entregar</button>
-      `;
-    } else if (est === 'PREPARADO') {
-      actionBtns = `
-        <button class="btn-sm btn-deliver" onclick="setOrderStatus('${o.id}', 'ENTREGADO')" title="Marcar Entregado y descontar stock">🚚 Entregar</button>
-      `;
-    }
-
-    return `
-      <tr>
-        <td><div class="font-bold">${escapeAttr(o.fecha)}</div><div class="muted" style="font-size:11px;">${escapeAttr(o.ruta || 'A DEFINIR')}</div></td>
-        <td>
-          <div class="font-bold">${escapeAttr(o.cliente)}</div>
-          ${zonaStr}
-          ${o.notas ? `<div class="muted" style="font-size:11px;">${escapeAttr(o.notas)}</div>` : ''}
-        </td>
-        <td><div>${escapeAttr(desc)}</div></td>
-        <td class="text-right">
-          <div class="font-bold">${fmtMoney(total)}</div>
-          ${senaStr}
-        </td>
-        <td>${stateBadge}</td>
-        <td class="text-right" style="white-space:nowrap;">
-          <div class="action-icon-group">
-            ${actionBtns}
-            <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
-            <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
-          </div>
-        </td>
-      </tr>
+function getOrderActionButtonsHtml(o) {
+  const est = o.estado || 'PENDIENTE';
+  let actionBtns = '';
+  if (est === 'PENDIENTE') {
+    actionBtns = `
+      <button class="btn-sm btn-prep" onclick="setOrderStatus('${o.id}', 'PREPARADO')" title="Marcar Comprado / Preparado">✓ Preparado</button>
+      <button class="btn-sm btn-deliver" onclick="setOrderStatus('${o.id}', 'ENTREGADO')" title="Marcar Entregado y descontar stock">🚚 Entregar</button>
     `;
-  }).join('') : `<tr><td colspan="6" class="text-center muted" style="padding:24px;">No hay pedidos en este estado.</td></tr>`;
+  } else if (est === 'PREPARADO') {
+    actionBtns = `
+      <button class="btn-sm btn-deliver" onclick="setOrderStatus('${o.id}', 'ENTREGADO')" title="Marcar Entregado y descontar stock">🚚 Entregar</button>
+    `;
+  }
+  return `
+    <div class="action-icon-group">
+      ${actionBtns}
+      <button class="btn-icon" onclick="openEditOperationModal('${o.id}', true)" title="Editar pedido">✏️</button>
+      <button class="btn-icon btn-icon-del" onclick="deleteOrder('${o.id}')" title="Eliminar">🗑</button>
+    </div>
+  `;
+}
+
+function renderOrders() {
+  populateOrderFilterSelects();
+
+  const q = (document.getElementById('order-search')?.value || '').trim().toLowerCase();
+  const zonaFilter = document.getElementById('order-filter-zona')?.value || 'TODAS';
+  const barberiaFilter = document.getElementById('order-filter-barberia')?.value || 'TODAS';
+  const barberoFilter = document.getElementById('order-filter-barbero')?.value || 'TODOS';
+
+  const enrichedOrders = (db.orders || []).map(o => {
+    const meta = resolveOrderMetadata(o);
+    return { order: o, meta };
+  });
+
+  const filtered = enrichedOrders.filter(({ order: o, meta }) => {
+    const est = o.estado || 'PENDIENTE';
+    if (activeOrderFilter !== 'TODOS' && est !== activeOrderFilter) return false;
+    if (zonaFilter !== 'TODAS' && meta.zona !== zonaFilter) return false;
+    if (barberiaFilter !== 'TODAS' && meta.barberia !== barberiaFilter) return false;
+    if (barberoFilter !== 'TODOS' && meta.barbero !== barberoFilter) return false;
+
+    if (q) {
+      const itemsStr = (o.items || []).map(i => i.producto).join(' ').toLowerCase();
+      const hay = `${o.cliente || ''} ${meta.zona} ${meta.barberia} ${meta.barbero} ${o.ruta || ''} ${itemsStr} ${o.detalleManual || ''} ${o.notas || ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  let countTotal = 0;
+  let countPendientes = 0;
+  let countPreparados = 0;
+  let countEntregados = 0;
+  let totalMontoEstimado = 0;
+
+  filtered.forEach(({ order: o }) => {
+    const est = o.estado || 'PENDIENTE';
+    countTotal++;
+    if (est === 'PENDIENTE') countPendientes++;
+    else if (est === 'PREPARADO') countPreparados++;
+    else if (est === 'ENTREGADO') countEntregados++;
+    totalMontoEstimado += Number(o.totalEstimado) || 0;
+  });
+
+  const metricTotalEl = document.getElementById('order-metric-total');
+  const metricPendEl = document.getElementById('order-metric-pendientes');
+  const metricPrepEl = document.getElementById('order-metric-preparados');
+  const metricDelivEl = document.getElementById('order-metric-entregados');
+  if (metricTotalEl) metricTotalEl.textContent = String(countTotal);
+  if (metricPendEl) metricPendEl.textContent = `${countPendientes} ${countPendientes === 1 ? 'pendiente' : 'pendientes'}`;
+  if (metricPrepEl) metricPrepEl.textContent = String(countPreparados);
+  if (metricDelivEl) metricDelivEl.textContent = String(countEntregados);
+
+  const summaryEl = document.getElementById('orders-filter-summary');
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <span>Mostrando <strong>${filtered.length}</strong> de <strong>${(db.orders || []).length}</strong> pedidos</span>
+      <span>Monto estimado: <strong class="text-amber">${fmtMoney(totalMontoEstimado)}</strong></span>
+    `;
+  }
+
+  const groupWrapEl = document.getElementById('order-group-by-wrap');
+  const groupSelectEl = document.getElementById('order-group-by');
+  if (groupSelectEl) groupSelectEl.value = activeOrderGroupBy;
+  if (groupWrapEl) groupWrapEl.style.display = activeOrderViewMode === 'GROUPED' ? 'inline-flex' : 'none';
+
+  const tableWrap = document.getElementById('orders-table-wrap');
+  const groupedContainer = document.getElementById('orders-grouped-container');
+  const tbody = document.getElementById('orders-body');
+
+  if (tableWrap) tableWrap.style.display = activeOrderViewMode === 'TABLE' ? 'block' : 'none';
+  if (groupedContainer) groupedContainer.style.display = activeOrderViewMode === 'GROUPED' ? 'flex' : 'none';
+
+  if (tbody) {
+    tbody.innerHTML = filtered.length ? filtered.map(({ order: o, meta }) => {
+      const desc = (o.items && o.items.length)
+        ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
+        : (o.detalleManual || o.notas || 'Pedido sin detalle');
+      const est = o.estado || 'PENDIENTE';
+      const total = Number(o.totalEstimado) || 0;
+      const sena = Number(o.sena) || 0;
+      const zonaTag = `<span class="order-zone-tag ${meta.zona === 'SIN ZONA' ? 'is-empty' : ''}">${meta.zona === 'SIN ZONA' ? 'Sin zona' : '📍 ' + escapeAttr(meta.zona)}</span>`;
+      const senaStr = sena > 0 ? `<div class="muted" style="font-size:11px;">Seña: ${fmtMoney(sena)} · Resta: ${fmtMoney(Math.max(0, total - sena))}</div>` : '';
+
+      return `
+        <tr>
+          <td><div class="font-bold">${escapeAttr(o.fecha)}</div><div class="muted" style="font-size:11px;">${escapeAttr(o.ruta || 'A DEFINIR')}</div></td>
+          <td>${zonaTag}</td>
+          <td>
+            <div class="font-bold">${escapeAttr(meta.barberia)}</div>
+            <div class="muted" style="font-size:11.5px;">✂️ ${escapeAttr(meta.barbero)}</div>
+            ${o.notas ? `<div class="muted" style="font-size:11px;">${escapeAttr(o.notas)}</div>` : ''}
+          </td>
+          <td><div>${escapeAttr(desc)}</div></td>
+          <td class="text-right">
+            <div class="font-bold">${fmtMoney(total)}</div>
+            ${senaStr}
+          </td>
+          <td>${getOrderStatusBadgeHtml(est)}</td>
+          <td class="text-right" style="white-space:nowrap;">${getOrderActionButtonsHtml(o)}</td>
+        </tr>
+      `;
+    }).join('') : `<tr><td colspan="7" class="text-center muted" style="padding:24px;">No hay pedidos con los filtros seleccionados.</td></tr>`;
+  }
+
+  if (groupedContainer) {
+    if (!filtered.length) {
+      groupedContainer.innerHTML = `<div class="muted text-center" style="padding:24px;">No hay pedidos con los filtros seleccionados.</div>`;
+    } else {
+      const groupsMap = new Map();
+      const groupField = activeOrderGroupBy === 'BARBERIA' ? 'barberia' : (activeOrderGroupBy === 'BARBERO' ? 'barbero' : 'zona');
+      const groupIcon = activeOrderGroupBy === 'BARBERIA' ? '💈' : (activeOrderGroupBy === 'BARBERO' ? '✂️' : '📍');
+      const fallbackLast = activeOrderGroupBy === 'BARBERIA' ? 'SIN BARBERÍA' : (activeOrderGroupBy === 'BARBERO' ? 'SIN BARBERO' : 'SIN ZONA');
+
+      filtered.forEach(entry => {
+        const key = entry.meta[groupField] || fallbackLast;
+        if (!groupsMap.has(key)) {
+          groupsMap.set(key, { key, entries: [], total: 0, pendientes: 0, preparados: 0, entregados: 0, monto: 0 });
+        }
+        const g = groupsMap.get(key);
+        g.entries.push(entry);
+        g.total++;
+        const est = entry.order.estado || 'PENDIENTE';
+        if (est === 'PENDIENTE') g.pendientes++;
+        else if (est === 'PREPARADO') g.preparados++;
+        else if (est === 'ENTREGADO') g.entregados++;
+        g.monto += Number(entry.order.totalEstimado) || 0;
+      });
+
+      const sortedKeys = sortOrderTaxonomyValues(new Set(groupsMap.keys()), fallbackLast);
+      groupedContainer.innerHTML = sortedKeys.map(key => {
+        const g = groupsMap.get(key);
+        const storageKey = `${activeOrderGroupBy}:${key}`;
+        const isOpenAttr = collapsedOrderGroups.has(storageKey) ? '' : ' open';
+        const safeStorageKey = storageKey.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+        const itemsHtml = g.entries.map(({ order: o, meta }) => {
+          const desc = (o.items && o.items.length)
+            ? o.items.map(i => `${i.qty}x ${i.producto}`).join(', ')
+            : (o.detalleManual || o.notas || 'Pedido sin detalle');
+          const est = o.estado || 'PENDIENTE';
+          const total = Number(o.totalEstimado) || 0;
+          const sena = Number(o.sena) || 0;
+          const senaStr = sena > 0 ? `<span class="muted" style="font-size:11px;">(Seña: ${fmtMoney(sena)} · Resta: ${fmtMoney(Math.max(0, total - sena))})</span>` : '';
+
+          return `
+            <div class="order-group-item">
+              <div class="order-group-item-main">
+                <div class="order-group-item-top">
+                  <strong>${escapeAttr(meta.barberia)}</strong>
+                  <span class="muted">· ✂️ ${escapeAttr(meta.barbero)}</span>
+                  <span class="order-zone-tag ${meta.zona === 'SIN ZONA' ? 'is-empty' : ''}">${meta.zona === 'SIN ZONA' ? 'Sin zona' : '📍 ' + escapeAttr(meta.zona)}</span>
+                  ${getOrderStatusBadgeHtml(est)}
+                </div>
+                <div style="font-size:13px;">${escapeAttr(desc)}</div>
+                <div class="muted" style="font-size:11.5px;">
+                  ${escapeAttr(o.fecha)} · ${escapeAttr(o.ruta || 'A DEFINIR')}${o.notas ? ' · Nota: ' + escapeAttr(o.notas) : ''}
+                </div>
+              </div>
+              <div class="order-group-item-right">
+                <div class="text-right">
+                  <div class="font-bold">${fmtMoney(total)}</div>
+                  ${senaStr}
+                </div>
+                ${getOrderActionButtonsHtml(o)}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <details class="order-group-card"${isOpenAttr} ontoggle="toggleOrderGroupCollapse('${safeStorageKey}', this.open)">
+            <summary class="order-group-summary">
+              <div class="order-group-title-wrap">
+                <span class="order-group-chevron">▶</span>
+                <span>${groupIcon} ${escapeAttr(key)}</span>
+              </div>
+              <div class="order-group-badges">
+                <span class="order-group-stat">Pedidos: <strong>${g.total}</strong>${g.pendientes ? ` (${g.pendientes} pend.)` : ''}</span>
+                <span class="order-group-stat stat-prep">Comprados: <strong>${g.preparados}</strong></span>
+                <span class="order-group-stat stat-deliv">Entregados: <strong>${g.entregados}</strong></span>
+                <span class="order-group-stat stat-amount">${fmtMoney(g.monto)}</span>
+              </div>
+            </summary>
+            <div class="order-group-items">
+              ${itemsHtml}
+            </div>
+          </details>
+        `;
+      }).join('');
+    }
+  }
 }
 
 function resetQuickOrderForm() {

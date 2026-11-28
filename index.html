@@ -531,7 +531,7 @@
       </div>
     </main>
 
-    <!-- TAB 4: PEDIDOS SIMPLIFICADOS (LISTADO ÚNICO CON DETALLE COMPLETO) -->
+    <!-- TAB 4: PEDIDOS SIMPLIFICADOS (LISTADO ÚNICO + CLASIFICACIÓN POR ZONA, BARBERÍA Y BARBERO) -->
     <main id="tab-pedidos" class="tab-content">
       <div class="dashboard-split">
         <div class="glass-card panel-box">
@@ -545,17 +545,64 @@
             </div>
           </div>
 
-          <div class="search-bar-inline search-clear-row">
-            <input type="text" id="order-search" placeholder="🔍 Buscar pedido, cliente, zona o producto..." oninput="renderOrders()" />
-            <button type="button" class="btn-clear-filter" onclick="resetOrderFilters()">✕ Limpiar</button>
+          <div class="orders-metrics-grid">
+            <div class="order-metric-card metric-total">
+              <span class="order-metric-label">Cantidad de Pedidos</span>
+              <strong class="order-metric-val" id="order-metric-total">0</strong>
+              <span class="order-metric-sub" id="order-metric-pendientes">0 pendientes</span>
+            </div>
+            <div class="order-metric-card metric-prep">
+              <span class="order-metric-label">Comprados</span>
+              <strong class="order-metric-val text-purple" id="order-metric-preparados">0</strong>
+              <span class="order-metric-sub">Comprado / Preparado</span>
+            </div>
+            <div class="order-metric-card metric-deliv">
+              <span class="order-metric-label">Entregados</span>
+              <strong class="order-metric-val text-green" id="order-metric-entregados">0</strong>
+              <span class="order-metric-sub">Completados</span>
+            </div>
           </div>
 
-          <div class="table-wrap">
+          <div class="orders-filter-bar">
+            <div class="orders-search-wrap">
+              <input type="text" id="order-search" placeholder="🔍 Buscar pedido, zona, barbería, barbero o producto..." oninput="renderOrders()" />
+            </div>
+            <select id="order-filter-zona" onchange="renderOrders()" aria-label="Filtrar pedidos por zona">
+              <option value="TODAS">Zona: Todas</option>
+            </select>
+            <select id="order-filter-barberia" onchange="renderOrders()" aria-label="Filtrar pedidos por barbería">
+              <option value="TODAS">Barbería: Todas</option>
+            </select>
+            <select id="order-filter-barbero" onchange="renderOrders()" aria-label="Filtrar pedidos por barbero">
+              <option value="TODOS">Barbero: Todos</option>
+            </select>
+            <button type="button" id="order-filter-reset" class="btn-clear-filter" onclick="resetOrderFilters()">✕ Limpiar</button>
+          </div>
+
+          <div class="orders-view-toolbar">
+            <div class="route-filters" id="order-view-mode-filters">
+              <button type="button" class="chip active" data-view="TABLE" onclick="setOrderViewMode('TABLE', this)">📋 Tabla / Listado</button>
+              <button type="button" class="chip" data-view="GROUPED" onclick="setOrderViewMode('GROUPED', this)">🗂️ Agrupado</button>
+            </div>
+            <div class="orders-group-select-wrap" id="order-group-by-wrap" style="display:none;">
+              <label for="order-group-by">Agrupar por:</label>
+              <select id="order-group-by" onchange="setOrderGroupBy(this.value)" aria-label="Agrupar pedidos por">
+                <option value="ZONA">📍 Zona</option>
+                <option value="BARBERIA">💈 Barbería</option>
+                <option value="BARBERO">✂️ Barbero</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="orders-filter-summary" class="orders-summary-bar"></div>
+
+          <div class="table-wrap" id="orders-table-wrap">
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Fecha / Ruta</th>
-                  <th>Cliente / Zona</th>
+                  <th>Zona</th>
+                  <th>Barbería / Barbero</th>
                   <th>Productos</th>
                   <th class="text-right">Monto</th>
                   <th>Estado</th>
@@ -565,6 +612,8 @@
               <tbody id="orders-body"></tbody>
             </table>
           </div>
+
+          <div id="orders-grouped-container" class="orders-grouped-list" style="display:none;"></div>
         </div>
 
         <div class="side-stack">
